@@ -1,0 +1,12 @@
+target_obj,algorithm,win_share,winner_hits,samples,win_fraction,winner_rate
+bf,Coutino,0.25,1.0,10,0.025,0.1
+bf,Gurobi-BF,9.25,10.0,10,0.925,1.0
+bf,Gurobi-Gen,0.25,1.0,10,0.025,0.1
+bf,MISO-EE,0.25,1.0,10,0.025,0.1
+gen,Coutino,3.1999999999999997,10.0,10,0.31999999999999995,1.0
+gen,Gurobi-BF,0.25,1.0,10,0.025,0.1
+gen,Gurobi-Gen,3.1999999999999997,10.0,10,0.31999999999999995,1.0
+gen,H3-threshold-BF,0.45,2.0,10,0.045,0.2
+gen,H3-threshold-Gen,0.45,2.0,10,0.045,0.2
+gen,MISO-EE,2.4499999999999997,8.0,10,0.24499999999999997,0.8
+int,Gurobi-Int,10.0,10.0,10,1.0,1.0

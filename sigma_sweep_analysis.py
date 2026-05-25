@@ -1,5 +1,6 @@
 import argparse
 import hashlib
+import json
 import os
 import time
 from pathlib import Path
@@ -21,6 +22,8 @@ from algorithms import (
     solve_coutino_greedy,
     solve_h1,
     solve_h2,
+    solve_h3,
+    solve_h3_fast,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
 )
@@ -28,21 +31,56 @@ from motor_challenge_1205 import generate_V
 
 
 HEURISTICS = (
-    ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
-    ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
-    ("Coutino", lambda V, K, sigma, P: solve_coutino_greedy(V, K, sigma=sigma, P=P)),
+    ("H1", lambda V, K, sigma, P, random_state: solve_h1(V, K, sigma=sigma, P=P)),
+    ("H2", lambda V, K, sigma, P, random_state: solve_h2(V, K, sigma=sigma, P=P)),
+    (
+        "Coutino",
+        lambda V, K, sigma, P, random_state: solve_coutino_greedy(
+            V, K, sigma=sigma, P=P
+        ),
+    ),
     (
         "MISO-EE",
-        lambda V, K, sigma, P: solve_miso_energy_greedy(
+        lambda V, K, sigma, P, random_state: solve_miso_energy_greedy(
             V, K, sigma=sigma, P=P, target_margin=0.05
         ),
     ),
     (
         "Pareto-H2",
-        lambda V, K, sigma, P: solve_pareto_interference_greedy(
+        lambda V, K, sigma, P, random_state: solve_pareto_interference_greedy(
             V, K, sigma=sigma, P=P
         ),
     ),
+    (
+        "H3-threshold-BF",
+        lambda V, K, sigma, P, random_state: solve_h3(
+            V, K, target_obj="bf", sigma=sigma, P=P
+        ),
+    ),
+    (
+        "H3-threshold-Int",
+        lambda V, K, sigma, P, random_state: solve_h3(
+            V, K, target_obj="int", sigma=sigma, P=P
+        ),
+    ),
+    (
+        "H3-threshold-Gen",
+        lambda V, K, sigma, P, random_state: solve_h3(
+            V, K, target_obj="gen", sigma=sigma, P=P
+        ),
+    ),
+    (
+        "H3-Fast",
+        lambda V, K, sigma, P, random_state: solve_h3_fast(
+            V, K, random_state=random_state
+        ),
+    ),
+)
+
+METRICS = (
+    ("u_bf", "BF gain", "max"),
+    ("u_i", "Interference", "min"),
+    ("u_g", "General objective", "max"),
 )
 
 
@@ -68,32 +106,179 @@ def parse_args():
     parser.add_argument("--N", type=int, default=1000)
     parser.add_argument("--L", type=int, default=4)
     parser.add_argument("--active-frac", type=float, default=0.5)
+    parser.add_argument(
+        "--K-values",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Explicit active antenna limits. Overrides --active-frac.",
+    )
+    parser.add_argument(
+        "--K-pcts",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Active antenna percentages, e.g. 25 means K=round(0.25*N).",
+    )
+    parser.add_argument(
+        "--off-pcts",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Disabled antenna percentages, matching grid_benchmark off_pct.",
+    )
+    parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--P", type=float, default=1.0)
     parser.add_argument(
         "--sigmas",
         type=float,
         nargs="+",
-        default=[0.001, 0.003, 0.01, 0.03, 0.1, 0.3, 1.0, 3.0, 10.0, 30.0, 100.0, 300.0, 1000.0],
+        default=[
+            0.001,
+            0.003,
+            0.01,
+            0.03,
+            0.1,
+            0.3,
+            1.0,
+            3.0,
+            10.0,
+            30.0,
+            100.0,
+            300.0,
+            1000.0,
+            3000.0,
+            10000.0,
+            30000.0,
+            100000.0,
+        ],
     )
     parser.add_argument(
         "--out-dir", type=Path, default=Path("results/sigma_sweep")
     )
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=1,
+        help="Rewrite sigma_sweep_runs.csv and progress JSON every N completed cases.",
+    )
+    parser.add_argument(
+        "--summary-every",
+        type=int,
+        default=10,
+        help="Refresh summary/report CSV files every N completed cases. Use 0 for final only.",
+    )
+    parser.add_argument(
+        "--plot-every",
+        type=int,
+        default=0,
+        help="Refresh plots every N completed cases. Use 0 for final only.",
+    )
+    parser.add_argument(
+        "--refresh-from-runs",
+        type=Path,
+        default=None,
+        help="Read an existing sigma_sweep_runs.csv and rebuild reports/plots only.",
+    )
     return parser.parse_args()
 
 
-def run_case(V, K, sigma, P):
+def parse_k_cases(args):
+    explicit_modes = [
+        args.K_values is not None,
+        args.K_pcts is not None,
+        args.off_pcts is not None,
+    ]
+    if sum(explicit_modes) > 1:
+        raise ValueError("Use only one of --K-values, --K-pcts, or --off-pcts.")
+
+    cases = []
+    if args.K_values is not None:
+        for K in args.K_values:
+            active_pct = 100.0 * K / args.N
+            cases.append(
+                {
+                    "K": int(K),
+                    "K_mode": "absolute",
+                    "K_value": int(K),
+                    "active_pct": active_pct,
+                    "off_pct": 100.0 - active_pct,
+                    "K_label": f"K<={int(K)} ({active_pct:.3g}% active, absolute K)",
+                }
+            )
+    elif args.K_pcts is not None:
+        for pct in args.K_pcts:
+            K = int(round(args.N * pct / 100.0))
+            cases.append(
+                {
+                    "K": K,
+                    "K_mode": "active_pct",
+                    "K_value": float(pct),
+                    "active_pct": float(pct),
+                    "off_pct": 100.0 - float(pct),
+                    "K_label": f"K<={K} ({pct:g}% active)",
+                }
+            )
+    elif args.off_pcts is not None:
+        for pct in args.off_pcts:
+            K = int(round(args.N * (1.0 - pct / 100.0)))
+            cases.append(
+                {
+                    "K": K,
+                    "K_mode": "off_pct",
+                    "K_value": float(pct),
+                    "active_pct": 100.0 - float(pct),
+                    "off_pct": float(pct),
+                    "K_label": f"K<={K} ({pct:g}% off, {100.0 - pct:g}% active)",
+                }
+            )
+    else:
+        K = int(round(args.N * args.active_frac))
+        active_pct = 100.0 * args.active_frac
+        cases.append(
+            {
+                "K": K,
+                "K_mode": "active_frac",
+                "K_value": float(args.active_frac),
+                "active_pct": active_pct,
+                "off_pct": 100.0 - active_pct,
+                "K_label": f"K<={K} ({active_pct:.3g}% active)",
+            }
+        )
+
+    seen = {}
+    for case in cases:
+        K = case["K"]
+        if K in seen:
+            raise ValueError(
+                f"Duplicate K={K} from {seen[K]!r} and {case['K_label']!r}."
+            )
+        seen[K] = case["K_label"]
+    return cases
+
+
+def geometric_mean(values):
+    values = np.asarray(values, dtype=float)
+    values = np.maximum(values, np.finfo(float).eps)
+    return float(np.exp(np.mean(np.log(values))))
+
+
+def run_case(V, K, sigma, P, random_state):
     rows = []
     for heuristic, solver in HEURISTICS:
         with np.errstate(all="ignore"):
             started_at = time.perf_counter()
-            x = solver(V, K, sigma, P)
+            x = solver(V, K, sigma, P, random_state)
             elapsed_seconds = time.perf_counter() - started_at
             valid, active_count = check_constraints(x, K)
             u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
             eigvals = effective_channel_eigvals(V, x, P)
         if not valid or not np.isfinite([u_bf, u_i, u_g]).all():
             raise RuntimeError(f"Invalid result for {heuristic} at sigma={sigma}")
+        min_eig = float(np.min(eigvals))
+        max_eig = float(np.max(eigvals))
+        geom_eig = geometric_mean(eigvals)
         rows.append(
             {
                 "sigma": sigma,
@@ -107,10 +292,16 @@ def run_case(V, K, sigma, P):
                 "log10_u_g": np.log10(max(u_g, np.finfo(float).tiny)),
                 "log2_u_g_per_active": np.log2(max(u_g, np.finfo(float).tiny))
                 / active_count,
-                "min_channel_eig": float(np.min(eigvals)),
-                "max_channel_eig": float(np.max(eigvals)),
+                "min_channel_eig": min_eig,
+                "geom_channel_eig": geom_eig,
+                "max_channel_eig": max_eig,
+                "condition_channel_eig": max_eig / max(min_eig, np.finfo(float).eps),
                 "sigma_over_min_channel_eig": sigma
-                / max(float(np.min(eigvals)), np.finfo(float).eps),
+                / max(min_eig, np.finfo(float).eps),
+                "sigma_over_geom_channel_eig": sigma
+                / max(geom_eig, np.finfo(float).eps),
+                "sigma_over_max_channel_eig": sigma
+                / max(max_eig, np.finfo(float).eps),
                 "elapsed_seconds": elapsed_seconds,
             }
         )
@@ -119,67 +310,221 @@ def run_case(V, K, sigma, P):
 
 def add_relative_metrics(runs):
     runs = runs.copy()
-    min_sigma = runs["sigma"].min()
-    baseline_u_g = (
-        runs[runs["sigma"] == min_sigma]
-        .set_index("heuristic")["u_g"]
-        .to_dict()
+    case_cols = ["K", "sample", "sigma"]
+    runs["best_u_g_case"] = runs.groupby(case_cols)["u_g"].transform("max")
+    runs["best_u_bf_case"] = runs.groupby(case_cols)["u_bf"].transform("max")
+    runs["best_u_i_case"] = runs.groupby(case_cols)["u_i"].transform("min")
+    runs["u_g_vs_best_case"] = runs["u_g"] / runs["best_u_g_case"]
+    runs["u_bf_vs_best_case"] = runs["u_bf"] / runs["best_u_bf_case"]
+    runs["u_i_vs_best_case"] = runs["best_u_i_case"] / np.maximum(
+        runs["u_i"], np.finfo(float).eps
     )
-    best_h2_bf = runs[runs["heuristic"] == "H2"].set_index("sigma")["u_bf"]
-    h2_interference = runs[runs["heuristic"] == "H2"].set_index("sigma")["u_i"]
+
     best_h12_u_g = (
         runs[runs["heuristic"].isin(["H1", "H2"])]
-        .groupby("sigma")["u_g"]
+        .groupby(case_cols)["u_g"]
         .max()
+        .rename("best_h12_u_g")
+        .reset_index()
     )
-    runs["u_g_vs_min_sigma"] = runs.apply(
-        lambda row: row["u_g"] / baseline_u_g[row["heuristic"]],
-        axis=1,
+    runs = runs.merge(best_h12_u_g, on=case_cols, how="left")
+    runs["u_g_vs_best_h12"] = runs["u_g"] / runs["best_h12_u_g"]
+
+    h2_metrics = (
+        runs[runs["heuristic"] == "H2"][case_cols + ["u_bf", "u_i"]]
+        .rename(columns={"u_bf": "h2_u_bf", "u_i": "h2_u_i"})
     )
-    runs["u_g_vs_best_h12"] = runs.apply(
-        lambda row: row["u_g"] / best_h12_u_g.loc[row["sigma"]],
-        axis=1,
-    )
-    runs["bf_vs_h2"] = runs.apply(
-        lambda row: row["u_bf"] / best_h2_bf.loc[row["sigma"]],
-        axis=1,
-    )
-    runs["interference_score_vs_h2"] = runs.apply(
-        lambda row: h2_interference.loc[row["sigma"]] / max(row["u_i"], np.finfo(float).eps),
-        axis=1,
+    runs = runs.merge(h2_metrics, on=case_cols, how="left")
+    runs["bf_vs_h2"] = runs["u_bf"] / runs["h2_u_bf"]
+    runs["interference_score_vs_h2"] = runs["h2_u_i"] / np.maximum(
+        runs["u_i"], np.finfo(float).eps
     )
     return runs
 
 
 def build_winners(runs):
     rows = []
-    for sigma, chunk in runs.groupby("sigma"):
+    for keys, chunk in runs.groupby(["K", "sample", "sigma"]):
+        K, sample, sigma = keys
         by_h = chunk.set_index("heuristic")
-        bf_winner = by_h["u_bf"].idxmax()
-        int_winner = by_h["u_i"].idxmin()
-        gen_winner = by_h["u_g"].idxmax()
-        ee_winner = by_h["log2_u_g_per_active"].idxmax()
-        rows.append(
-            {
-                "sigma": sigma,
-                "bf_winner": bf_winner,
-                "interference_winner": int_winner,
-                "general_winner": gen_winner,
-                "energy_proxy_winner": ee_winner,
-                "best_u_g": by_h["u_g"].max(),
-                "best_interference": by_h["u_i"].min(),
-            }
+        for metric, label, direction in METRICS:
+            values = by_h[metric]
+            best_value = values.min() if direction == "min" else values.max()
+            winners = values[np.isclose(values, best_value)].index.tolist()
+            share = 1.0 / len(winners)
+            for winner in winners:
+                rows.append(
+                    {
+                        "K": K,
+                        "sample": sample,
+                        "sigma": sigma,
+                        "metric": metric,
+                        "metric_label": label,
+                        "heuristic": winner,
+                        "win_share": share,
+                        "winner_hit": 1.0,
+                    }
+                )
+
+    wins = pd.DataFrame(rows)
+    return (
+        wins.groupby(["K", "sigma", "metric", "metric_label", "heuristic"], as_index=False)
+        .agg(win_share=("win_share", "sum"), winner_hits=("winner_hit", "sum"))
+        .merge(
+            runs.groupby(["K", "sigma"], as_index=False)["sample"]
+            .nunique()
+            .rename(columns={"sample": "samples"}),
+            on=["K", "sigma"],
+            how="left",
         )
-    return pd.DataFrame(rows).sort_values("sigma")
+        .assign(
+            win_fraction=lambda df: df["win_share"] / df["samples"],
+            winner_rate=lambda df: df["winner_hits"] / df["samples"],
+        )
+        .sort_values(["K", "metric", "sigma", "heuristic"])
+    )
 
 
-def plot_sweep(runs, winners, out_dir, args):
+def build_summary(runs):
+    group_cols = ["K", "sigma", "heuristic"]
+    return (
+        runs.groupby(group_cols, as_index=False)
+        .agg(
+            K_label=("K_label", "first"),
+            K_mode=("K_mode", "first"),
+            K_value=("K_value", "first"),
+            active_pct=("active_pct", "first"),
+            off_pct=("off_pct", "first"),
+            active_count_mean=("active_count", "mean"),
+            active_count_std=("active_count", "std"),
+            u_bf_mean=("u_bf", "mean"),
+            u_bf_std=("u_bf", "std"),
+            u_i_mean=("u_i", "mean"),
+            u_i_std=("u_i", "std"),
+            u_g_mean=("u_g", "mean"),
+            u_g_std=("u_g", "std"),
+            log10_u_g_mean=("log10_u_g", "mean"),
+            log10_u_g_std=("log10_u_g", "std"),
+            u_g_vs_best_case_mean=("u_g_vs_best_case", "mean"),
+            u_bf_vs_best_case_mean=("u_bf_vs_best_case", "mean"),
+            u_i_vs_best_case_mean=("u_i_vs_best_case", "mean"),
+            u_g_vs_best_h12_mean=("u_g_vs_best_h12", "mean"),
+            log2_u_g_per_active_mean=("log2_u_g_per_active", "mean"),
+            min_channel_eig_mean=("min_channel_eig", "mean"),
+            geom_channel_eig_mean=("geom_channel_eig", "mean"),
+            max_channel_eig_mean=("max_channel_eig", "mean"),
+            condition_channel_eig_mean=("condition_channel_eig", "mean"),
+            sigma_over_geom_channel_eig_mean=("sigma_over_geom_channel_eig", "mean"),
+            elapsed_seconds_mean=("elapsed_seconds", "mean"),
+            elapsed_seconds_std=("elapsed_seconds", "std"),
+            samples=("sample", "count"),
+            selection_hashes=("selection_hash", "nunique"),
+        )
+        .fillna(0.0)
+    )
+
+
+def build_selection_stability(runs):
+    by_sample = (
+        runs.groupby(["K", "heuristic", "sample"], as_index=False)
+        .agg(
+            K_label=("K_label", "first"),
+            unique_selected_sets=("selection_hash", "nunique"),
+        )
+    )
+    return (
+        by_sample.groupby(["K", "heuristic"], as_index=False)
+        .agg(
+            K_label=("K_label", "first"),
+            unique_selected_sets_mean=("unique_selected_sets", "mean"),
+            unique_selected_sets_min=("unique_selected_sets", "min"),
+            unique_selected_sets_max=("unique_selected_sets", "max"),
+        )
+        .sort_values(["K", "heuristic"])
+    )
+
+
+def build_mean_leaders(summary):
+    rows = []
+    for keys, chunk in summary.groupby(["K", "sigma"]):
+        K, sigma = keys
+        by_h = chunk.set_index("heuristic")
+        for metric, label, direction in METRICS:
+            mean_col = f"{metric}_mean"
+            row = (
+                by_h.loc[by_h[mean_col].idxmin()]
+                if direction == "min"
+                else by_h.loc[by_h[mean_col].idxmax()]
+            )
+            rows.append(
+                {
+                    "K": K,
+                    "sigma": sigma,
+                    "metric": metric,
+                    "metric_label": label,
+                    "direction": direction,
+                    "leader": row.name,
+                    "leader_value": row[mean_col],
+                    "leader_geom_eig": row["geom_channel_eig_mean"],
+                    "leader_sigma_over_geom_eig": row[
+                        "sigma_over_geom_channel_eig_mean"
+                    ],
+                }
+            )
+    return pd.DataFrame(rows).sort_values(["K", "metric", "sigma"])
+
+
+def atomic_write_csv(frame, path):
+    tmp_path = path.with_name(path.name + ".tmp")
+    frame.to_csv(tmp_path, index=False)
+    os.replace(tmp_path, path)
+
+
+def atomic_write_json(payload, path):
+    tmp_path = path.with_name(path.name + ".tmp")
+    tmp_path.write_text(
+        json.dumps(payload, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    os.replace(tmp_path, path)
+
+
+def write_runs_checkpoint(rows, out_dir, progress):
+    runs = pd.DataFrame(rows)
+    runs = add_relative_metrics(runs)
+    atomic_write_csv(runs, out_dir / "sigma_sweep_runs.csv")
+    atomic_write_json(progress, out_dir / "sigma_sweep_progress.json")
+    return runs
+
+
+def write_derived_outputs(runs, out_dir, args, include_plots):
+    winners = build_winners(runs)
+    summary = build_summary(runs)
+    leaders = build_mean_leaders(summary)
+    stability = build_selection_stability(runs)
+
+    atomic_write_csv(summary, out_dir / "sigma_sweep_summary.csv")
+    atomic_write_csv(winners, out_dir / "sigma_sweep_winners.csv")
+    atomic_write_csv(leaders, out_dir / "sigma_sweep_mean_leaders.csv")
+    atomic_write_csv(stability, out_dir / "sigma_sweep_selection_stability.csv")
+    write_report(summary, winners, leaders, stability, out_dir, args)
+    if include_plots:
+        plot_sweep(summary, winners, leaders, out_dir, args)
+
+    return summary, winners, leaders, stability
+
+
+def plot_sweep(summary, winners, leaders, out_dir, args):
     colors = {
         "H1": "#1f77b4",
         "H2": "#ff7f0e",
         "Coutino": "#2ca02c",
         "MISO-EE": "#4f6d7a",
         "Pareto-H2": "#9467bd",
+        "H3-threshold-BF": "#8c564b",
+        "H3-threshold-Int": "#e377c2",
+        "H3-threshold-Gen": "#7f7f7f",
+        "H3-Fast": "#bcbd22",
     }
     markers = {
         "H1": "o",
@@ -187,166 +532,361 @@ def plot_sweep(runs, winners, out_dir, args):
         "Coutino": "^",
         "MISO-EE": "D",
         "Pareto-H2": "P",
+        "H3-threshold-BF": "v",
+        "H3-threshold-Int": "X",
+        "H3-threshold-Gen": "*",
+        "H3-Fast": "h",
     }
-    fig, axes = plt.subplots(2, 3, figsize=(17, 9), constrained_layout=True)
-    sigma_values = sorted(runs["sigma"].unique())
-    sigma_to_x = {sigma: idx for idx, sigma in enumerate(sigma_values)}
+    for K in sorted(summary["K"].unique()):
+        data_k = summary[summary["K"] == K]
+        k_label = data_k["K_label"].iloc[0]
+        wins_k = winners[(winners["K"] == K) & (winners["metric"] == "u_g")]
+        sigma_values = sorted(data_k["sigma"].unique())
+        sigma_to_x = {sigma: idx for idx, sigma in enumerate(sigma_values)}
+        fig, axes = plt.subplots(1, 3, figsize=(18, 5.5), constrained_layout=True)
 
-    panels = [
-        ("u_g_vs_min_sigma", "U_G / U_G at min sigma, higher is better"),
-        ("u_g_vs_best_h12", "U_G / best(H1,H2), higher is better"),
-        ("bf_vs_h2", "BF / H2 BF, higher is better; sigma-independent"),
-        (
-            "interference_score_vs_h2",
-            "H2 interference / algorithm interference, higher is better; sigma-independent",
-        ),
-        ("log2_u_g_per_active", "Energy proxy log2(U_G)/active, higher is better"),
-        (
-            "sigma_over_min_channel_eig",
-            "sigma / min eig(V_eq V_eq*), larger means sigma matters more",
-        ),
-    ]
+        panels = [
+            ("u_bf_mean", "BF gain, higher is better"),
+            ("u_i_mean", "Interference, lower is better"),
+            ("u_g_mean", "U_G = det(V_eq V_eq* + sigma I), higher is better"),
+        ]
 
-    for ax, (column, title) in zip(axes.flat, panels):
+        for ax, (column, title) in zip(axes.flat, panels):
+            for heuristic, _ in HEURISTICS:
+                curve = data_k[data_k["heuristic"] == heuristic].sort_values("sigma")
+                ax.plot(
+                    curve["sigma"].map(sigma_to_x),
+                    curve[column],
+                    marker=markers[heuristic],
+                    linewidth=1.8,
+                    markersize=4,
+                    color=colors[heuristic],
+                    label=heuristic,
+                )
+            ax.set_title(title)
+            ax.set_xlabel("sigma")
+            ax.set_xticks(
+                range(len(sigma_values)), [f"{sigma:g}" for sigma in sigma_values]
+            )
+            ax.tick_params(axis="x", labelrotation=35)
+            ax.grid(True, alpha=0.25)
+            ax.ticklabel_format(axis="y", style="sci", scilimits=(-3, 3))
+
+        axes[0].legend(loc="best", fontsize=8)
+        fig.suptitle(
+            f"Raw objective values, N={args.N}, L={args.L}, {k_label}, samples={args.samples}"
+        )
+        fig.savefig(out_dir / f"sigma_sweep_K{K}.png", dpi=180)
+        plt.close(fig)
+
+        fig, ax = plt.subplots(figsize=(14, 4.8), constrained_layout=True)
+        bottom = np.zeros(len(sigma_values), dtype=float)
         for heuristic, _ in HEURISTICS:
-            data = runs[runs["heuristic"] == heuristic].sort_values("sigma")
-            ax.plot(
-                data["sigma"].map(sigma_to_x),
-                data[column],
-                marker=markers[heuristic],
-                linewidth=2,
+            shares = []
+            for sigma in sigma_values:
+                row = wins_k[
+                    (wins_k["sigma"] == sigma) & (wins_k["heuristic"] == heuristic)
+                ]
+                shares.append(float(row["win_fraction"].iloc[0]) if len(row) else 0.0)
+            ax.bar(
+                range(len(sigma_values)),
+                shares,
+                bottom=bottom,
                 color=colors[heuristic],
                 label=heuristic,
             )
-        ax.set_title(title)
+            bottom += np.asarray(shares)
+        ax.set_title(f"Per-sample U_G winner share, N={args.N}, L={args.L}, {k_label}")
         ax.set_xlabel("sigma")
+        ax.set_ylabel("split win share")
         ax.set_xticks(range(len(sigma_values)), [f"{sigma:g}" for sigma in sigma_values])
-        ax.tick_params(axis="x", labelrotation=30)
-        ax.grid(True, alpha=0.25)
-    axes[0, 0].legend(loc="best")
-    fig.suptitle(
-        f"Sigma sweep, N={args.N}, L={args.L}, active <= {int(round(args.N * args.active_frac))} "
-        f"({round((1.0 - args.active_frac) * 100)}%+ antennas off), seed={args.seed}"
+        ax.tick_params(axis="x", labelrotation=35)
+        ax.set_ylim(0.0, 1.0)
+        ax.grid(True, axis="y", alpha=0.25)
+        ax.legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8)
+        fig.savefig(out_dir / f"sigma_winners_K{K}.png", dpi=180)
+        plt.close(fig)
+
+
+def leader_segments(leader_rows):
+    segments = []
+    current = None
+    start_sigma = None
+    end_sigma = None
+    for _, row in leader_rows.sort_values("sigma").iterrows():
+        leader = row["leader"]
+        sigma = row["sigma"]
+        if current is None:
+            current = leader
+            start_sigma = sigma
+            end_sigma = sigma
+            continue
+        if leader == current:
+            end_sigma = sigma
+            continue
+        segments.append((start_sigma, end_sigma, current))
+        current = leader
+        start_sigma = sigma
+        end_sigma = sigma
+    if current is not None:
+        segments.append((start_sigma, end_sigma, current))
+    return segments
+
+
+def format_sigma(value):
+    return f"{value:g}"
+
+
+def write_report(summary, winners, leaders, stability, out_dir, args):
+    k_cases = (
+        summary[["K", "K_label"]]
+        .drop_duplicates()
+        .sort_values("K")["K_label"]
+        .tolist()
     )
-    fig.savefig(out_dir / "sigma_sweep.png", dpi=180)
-    plt.close(fig)
-
-
-def write_report(runs, winners, out_dir, args):
     lines = [
         "# Sigma Sweep",
         "",
         f"- N: {args.N}",
         f"- L: {args.L}",
-        f"- K max: {int(round(args.N * args.active_frac))}",
-        f"- Minimum antennas off: {round((1.0 - args.active_frac) * 100)}%",
-        f"- Seed: {args.seed}",
+        f"- K cases: {', '.join(k_cases)}",
+        f"- Samples: {args.samples}",
+        f"- Seed range: {args.seed}..{args.seed + args.samples - 1}",
+        f"- Sigma values: {', '.join(format_sigma(s) for s in sorted(summary['sigma'].unique()))}",
+        f"- Algorithms: {', '.join(name for name, _ in HEURISTICS)}",
         "",
-        "Important: `sigma` appears only in `U_G = det(V_eq V_eq* + sigma I)`.",
-        "`U_BF` and `U_I` do not contain sigma, so they are expected to be flat unless the selected antenna set changes.",
-        "The report below also checks whether the selected antenna set changed across sigma.",
+        "Plots show raw mean objective values only: `U_BF`, `U_I`, and `U_G`.",
+        "`U_G = det(V_eq V_eq* + sigma I)` is the general objective.",
+        "If `lambda_i` are eigenvalues of `V_eq V_eq*`, then `U_G = product_i(lambda_i + sigma)`.",
+        "For `L=4`, `U_G = sigma^4 + sigma^3 sum(lambda_i) + sigma^2 e2(lambda) + sigma e3(lambda) + product(lambda_i)`.",
+        "The first algorithm-dependent term at large sigma is `sigma^3 sum(lambda_i)`, i.e. it tracks `U_BF = trace(V_eq V_eq*)`.",
+        "`U_BF` and `U_I` formulas do not contain `sigma`; if their curves move across sigma, the selected antenna set changed.",
         "",
-        "| sigma | best U_G | best BF | best interference | best EE proxy | Coutino U_G / best H1H2 | Pareto BF / H2 BF | Pareto Int / H2 Int | MISO-EE active | MISO-EE off |",
-        "|---:|:---:|:---:|:---:|:---:|---:|---:|---:|---:|---:|",
     ]
-    for sigma in sorted(runs["sigma"].unique()):
-        chunk = runs[runs["sigma"] == sigma].set_index("heuristic")
-        win = winners[winners["sigma"] == sigma].iloc[0]
-        best_h12_ug = max(chunk.loc["H1", "u_g"], chunk.loc["H2", "u_g"])
-        coutino_ratio = chunk.loc["Coutino", "u_g"] / best_h12_ug
-        pareto_bf_ratio = chunk.loc["Pareto-H2", "u_bf"] / chunk.loc["H2", "u_bf"]
-        pareto_int_ratio = chunk.loc["Pareto-H2", "u_i"] / chunk.loc["H2", "u_i"]
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    f"{sigma:g}",
-                    win["general_winner"],
-                    win["bf_winner"],
-                    win["interference_winner"],
-                    win["energy_proxy_winner"],
-                    f"{coutino_ratio:.3f}",
-                    f"{pareto_bf_ratio:.3f}",
-                    f"{pareto_int_ratio:.3f}",
-                    str(int(chunk.loc["MISO-EE", "active_count"])),
-                    f"{100.0 * chunk.loc['MISO-EE', 'turned_off_fraction']:.1f}%",
-                ]
+
+    for K in sorted(summary["K"].unique()):
+        k_label = summary[summary["K"] == K]["K_label"].iloc[0]
+        lines.extend([f"## {k_label}", ""])
+        gen_leaders = leaders[(leaders["K"] == K) & (leaders["metric"] == "u_g")]
+        segments = leader_segments(gen_leaders)
+        segment_text = ", ".join(
+            (
+                f"{format_sigma(start)}: {leader}"
+                if start == end
+                else f"{format_sigma(start)}..{format_sigma(end)}: {leader}"
             )
-            + " |"
+            for start, end, leader in segments
         )
-    lines.append("")
-    lines.append("## U_G Sigma Sensitivity")
-    lines.append("")
-    lines.append("| algorithm | U_G at min sigma | U_G at max sigma | relative change | max sigma / min eigenvalue |")
-    lines.append("|:---|---:|---:|---:|---:|")
-    min_sigma = runs["sigma"].min()
-    max_sigma = runs["sigma"].max()
-    for heuristic in [name for name, _ in HEURISTICS]:
-        low = runs[(runs["heuristic"] == heuristic) & (runs["sigma"] == min_sigma)].iloc[0]
-        high = runs[(runs["heuristic"] == heuristic) & (runs["sigma"] == max_sigma)].iloc[0]
-        relative_change = high["u_g"] / low["u_g"] - 1.0
-        lines.append(
-            "| "
-            + " | ".join(
-                [
-                    heuristic,
-                    f"{low['u_g']:.4e}",
-                    f"{high['u_g']:.4e}",
-                    f"{100.0 * relative_change:.2f}%",
-                    f"{high['sigma_over_min_channel_eig']:.4f}",
-                ]
+        lines.append(f"Mean `U_G` leader segments: {segment_text}.")
+        lines.append("")
+        lines.append("| sigma | U_G mean leader | U_G mean | BF mean leader | BF mean | Interference mean leader | Interference mean |")
+        lines.append("|---:|:---|---:|:---|---:|:---|---:|")
+
+        for sigma in sorted(summary[summary["K"] == K]["sigma"].unique()):
+            leader_rows = leaders[(leaders["K"] == K) & (leaders["sigma"] == sigma)]
+            gen = leader_rows[leader_rows["metric"] == "u_g"].iloc[0]
+            bf = leader_rows[leader_rows["metric"] == "u_bf"].iloc[0]
+            ui = leader_rows[leader_rows["metric"] == "u_i"].iloc[0]
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        format_sigma(sigma),
+                        gen["leader"],
+                        f"{gen['leader_value']:.4e}",
+                        bf["leader"],
+                        f"{bf['leader_value']:.4e}",
+                        ui["leader"],
+                        f"{ui['leader_value']:.4e}",
+                    ]
+                )
+                + " |"
             )
-            + " |"
-        )
-    lines.append("")
-    selection_counts = runs.groupby("heuristic")["selection_hash"].nunique()
-    unchanged = selection_counts[selection_counts == 1].index.tolist()
-    changed = selection_counts[selection_counts > 1].index.tolist()
-    lines.append(
-        "Selected-set check: "
-        + (
-            f"unchanged for {', '.join(unchanged)}"
-            if unchanged
-            else "no unchanged algorithms"
-        )
-        + (
-            f"; changed for {', '.join(changed)}."
-            if changed
-            else "; no algorithm changed selection across sigma."
-        )
-    )
-    lines.append("")
-    lines.append("Interpretation: H2 is expected to win pure interference; Coutino usually wins raw `U_G`; MISO-EE is the energy-saving compromise; Pareto-H2 targets H2-like interference while protecting BF.")
+
+        lines.extend(["", "### Raw Endpoint Comparison", ""])
+        min_sigma = summary[summary["K"] == K]["sigma"].min()
+        max_sigma = summary[summary["K"] == K]["sigma"].max()
+        lines.append("| algorithm | BF at min sigma | BF at max sigma | Interference at min sigma | Interference at max sigma | U_G at min sigma | U_G at max sigma | unique selected sets/sample |")
+        lines.append("|:---|---:|---:|---:|---:|---:|---:|---:|")
+        for heuristic, _ in HEURISTICS:
+            low = summary[
+                (summary["K"] == K)
+                & (summary["sigma"] == min_sigma)
+                & (summary["heuristic"] == heuristic)
+            ].iloc[0]
+            high = summary[
+                (summary["K"] == K)
+                & (summary["sigma"] == max_sigma)
+                & (summary["heuristic"] == heuristic)
+            ].iloc[0]
+            stability_row = stability[
+                (stability["K"] == K) & (stability["heuristic"] == heuristic)
+            ].iloc[0]
+            set_range = (
+                f"{stability_row['unique_selected_sets_mean']:.2f} "
+                f"({int(stability_row['unique_selected_sets_min'])}.."
+                f"{int(stability_row['unique_selected_sets_max'])})"
+            )
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        heuristic,
+                        f"{low['u_bf_mean']:.4e}",
+                        f"{high['u_bf_mean']:.4e}",
+                        f"{low['u_i_mean']:.4e}",
+                        f"{high['u_i_mean']:.4e}",
+                        f"{low['u_g_mean']:.4e}",
+                        f"{high['u_g_mean']:.4e}",
+                        set_range,
+                    ]
+                )
+                + " |"
+            )
+        lines.append("")
+
+        lines.extend(["### Selection Stability", ""])
+        lines.append("The count below is the number of distinct selected antenna sets across the sigma grid for the same random sample.")
+        lines.append("")
+        lines.append("| algorithm | mean unique sets/sample | min | max |")
+        lines.append("|:---|---:|---:|---:|")
+        for _, row in stability[stability["K"] == K].iterrows():
+            lines.append(
+                "| "
+                + " | ".join(
+                    [
+                        row["heuristic"],
+                        f"{row['unique_selected_sets_mean']:.2f}",
+                        str(int(row["unique_selected_sets_min"])),
+                        str(int(row["unique_selected_sets_max"])),
+                    ]
+                )
+                + " |"
+            )
+        lines.append("")
+
+    lines.append("Generated plots: `sigma_sweep_K*.png` for metric curves and `sigma_winners_K*.png` for per-sample `U_G` winner shares.")
     (out_dir / "sigma_sweep_report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
 def main():
     args = parse_args()
+    if args.samples <= 0:
+        raise ValueError("--samples must be positive.")
+    if args.checkpoint_every <= 0:
+        raise ValueError("--checkpoint-every must be positive.")
+    if args.summary_every < 0:
+        raise ValueError("--summary-every must be non-negative.")
+    if args.plot_every < 0:
+        raise ValueError("--plot-every must be non-negative.")
+    K_cases = parse_k_cases(args)
+    for case in K_cases:
+        K = case["K"]
+        if not (0 <= K <= args.N):
+            raise ValueError(f"K must satisfy 0 <= K <= N, got K={K}, N={args.N}.")
+        if K > 0 and K < args.L:
+            raise ValueError(f"K should be at least L for this sweep, got K={K}, L={args.L}.")
+
     args.out_dir.mkdir(parents=True, exist_ok=True)
-    np.random.seed(args.seed)
-    V = generate_V(args.N, args.L)
-    K = int(round(args.N * args.active_frac))
+
+    if args.refresh_from_runs is not None:
+        runs = pd.read_csv(args.refresh_from_runs)
+        write_derived_outputs(runs, args.out_dir, args, include_plots=True)
+        print("\nRefreshed from existing runs:")
+        print(f"  {args.refresh_from_runs}")
+        return
 
     rows = []
-    for sigma in args.sigmas:
-        print(f"sigma={sigma:g}", flush=True)
-        rows.extend(run_case(V, K, sigma, args.P))
+    total_cases = args.samples * len(K_cases) * len(args.sigmas)
+    case_no = 0
+    for sample in range(args.samples):
+        seed = args.seed + sample
+        np.random.seed(seed)
+        V = generate_V(args.N, args.L)
+        for case in K_cases:
+            K = case["K"]
+            for sigma in args.sigmas:
+                case_no += 1
+                print(
+                    f"[{case_no}/{total_cases}] sample={sample}, seed={seed}, "
+                    f"{case['K_label']}, sigma={sigma:g}",
+                    flush=True,
+                )
+                case_rows = run_case(
+                    V, K, sigma, args.P, random_state=seed + 1000003 * K
+                )
+                for row in case_rows:
+                    row.update(
+                        {
+                            "sample": sample,
+                            "seed": seed,
+                            "N": args.N,
+                            "L": args.L,
+                            "K": K,
+                            "K_mode": case["K_mode"],
+                            "K_value": case["K_value"],
+                            "active_pct": case["active_pct"],
+                            "off_pct": case["off_pct"],
+                            "K_label": case["K_label"],
+                            "P": args.P,
+                        }
+                    )
+                rows.extend(case_rows)
 
-    runs = pd.DataFrame(rows)
-    runs = add_relative_metrics(runs)
-    winners = build_winners(runs)
-    runs.to_csv(args.out_dir / "sigma_sweep_runs.csv", index=False)
-    winners.to_csv(args.out_dir / "sigma_sweep_winners.csv", index=False)
-    plot_sweep(runs, winners, args.out_dir, args)
-    write_report(runs, winners, args.out_dir, args)
+                progress = {
+                    "completed_cases": case_no,
+                    "total_cases": total_cases,
+                    "completed_fraction": case_no / total_cases,
+                    "last_sample": sample,
+                    "last_seed": seed,
+                    "last_K": K,
+                    "last_K_label": case["K_label"],
+                    "last_sigma": sigma,
+                    "status": "running",
+                }
+                checkpoint_runs = None
+                if case_no % args.checkpoint_every == 0:
+                    checkpoint_runs = write_runs_checkpoint(
+                        rows, args.out_dir, progress
+                    )
+                if args.summary_every and case_no % args.summary_every == 0:
+                    runs_for_summary = (
+                        checkpoint_runs
+                        if checkpoint_runs is not None
+                        else add_relative_metrics(pd.DataFrame(rows))
+                    )
+                    write_derived_outputs(
+                        runs_for_summary,
+                        args.out_dir,
+                        args,
+                        include_plots=(
+                            bool(args.plot_every)
+                            and case_no % args.plot_every == 0
+                        ),
+                    )
+
+    final_progress = {
+        "completed_cases": total_cases,
+        "total_cases": total_cases,
+        "completed_fraction": 1.0,
+        "status": "complete",
+    }
+    runs = write_runs_checkpoint(rows, args.out_dir, final_progress)
+    write_derived_outputs(runs, args.out_dir, args, include_plots=True)
 
     print("\nSaved:")
-    for path in [
+    paths = [
         "sigma_sweep_runs.csv",
+        "sigma_sweep_progress.json",
+        "sigma_sweep_summary.csv",
         "sigma_sweep_winners.csv",
+        "sigma_sweep_mean_leaders.csv",
+        "sigma_sweep_selection_stability.csv",
         "sigma_sweep_report.md",
-        "sigma_sweep.png",
-    ]:
+    ]
+    for K in sorted(case["K"] for case in K_cases):
+        paths.extend([f"sigma_sweep_K{K}.png", f"sigma_winners_K{K}.png"])
+    for path in paths:
         print(f"  {args.out_dir / path}")
 
 
