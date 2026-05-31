@@ -9,6 +9,12 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_frame_bf,
+    solve_frame_general,
+    solve_frame_interference,
+    solve_frame_only_bf,
+    solve_frame_only_general,
+    solve_frame_only_interference,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -55,6 +61,51 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
         (
             "H3-Gen",
             lambda: solve_h3(V, K, target_obj="gen", sigma=sigma, P=P),
+        ),
+        (
+            "Frame-BF",
+            lambda: solve_frame_bf(
+                V,
+                K,
+                sigma=sigma,
+                P=P,
+                random_state=random_state,
+                max_refined_starts=3,
+                max_passes=2,
+                remove_limit=50,
+                add_limit=50,
+                lambdas=(),
+            ),
+        ),
+        (
+            "Frame-Int",
+            lambda: solve_frame_interference(
+                V,
+                K,
+                sigma=sigma,
+                P=P,
+                random_state=random_state,
+                max_refined_starts=3,
+                max_passes=2,
+                remove_limit=50,
+                add_limit=50,
+                lambdas=(),
+            ),
+        ),
+        (
+            "Frame-Gen",
+            lambda: solve_frame_general(
+                V,
+                K,
+                sigma=sigma,
+                P=P,
+                random_state=random_state,
+                max_refined_starts=3,
+                max_passes=2,
+                remove_limit=50,
+                add_limit=50,
+                lambdas=(),
+            ),
         ),
         (
             "Coutino",
@@ -178,6 +229,30 @@ class TestAntennaSelection(unittest.TestCase):
             self.assertTrue(is_valid)
             self.assertEqual(num_active, self.K)
 
+    def test_frame_portfolio_logic(self):
+        solvers = (
+            solve_frame_bf,
+            solve_frame_interference,
+            solve_frame_general,
+            solve_frame_only_bf,
+            solve_frame_only_interference,
+            solve_frame_only_general,
+        )
+        for solver in solvers:
+            x = solver(
+                self.V_L4,
+                self.K,
+                random_state=42,
+                max_refined_starts=2,
+                max_passes=1,
+                remove_limit=20,
+                add_limit=20,
+                lambdas=(),
+            )
+            is_valid, num_active = check_constraints(x, self.K)
+            self.assertTrue(is_valid)
+            self.assertEqual(num_active, self.K)
+
     def test_objectives_calculation(self):
         x = solve_h1(self.V_L2, self.K)
         u_bf, u_i, u_g = calculate_objectives(self.V_L2, x, sigma=1.0)
@@ -215,7 +290,7 @@ def print_aggregate_results(aggregate, win_counts, samples):
 
     print("--- Average Objective Values ---")
     print(
-        f"{'Algorithm':<12} | {'Valid':>7} | {'Active':>9} | "
+        f"{'Algorithm':<16} | {'Valid':>7} | {'Active':>9} | "
         f"{'BF mean':>13} | {'Int mean':>13} | {'Gen mean':>13}"
     )
     print("-" * 78)
@@ -223,7 +298,7 @@ def print_aggregate_results(aggregate, win_counts, samples):
     for name in algorithm_names:
         row = aggregate[name]
         print(
-            f"{name:<12} | {row['valid_count'] / samples:>6.1%} | "
+            f"{name:<16} | {row['valid_count'] / samples:>6.1%} | "
             f"{row['active_count'] / samples:>9.2f} | "
             f"{row['u_bf'] / samples:>13.6g} | "
             f"{row['u_i'] / samples:>13.6g} | "
@@ -231,7 +306,7 @@ def print_aggregate_results(aggregate, win_counts, samples):
         )
 
     print("\n--- Objective Comparison Over Samples ---")
-    print(f"{'Metric':<22} | {'Best by mean':<12} | {'Per-sample wins'}")
+    print(f"{'Metric':<22} | {'Best by mean':<16} | {'Per-sample wins'}")
     print("-" * 78)
 
     for metric, label, direction in metric_specs:
@@ -242,7 +317,7 @@ def print_aggregate_results(aggregate, win_counts, samples):
             for name in algorithm_names
             if win_counts[metric].get(name, 0)
         )
-        print(f"{label:<22} | {best:<12} | {wins}")
+        print(f"{label:<22} | {best:<16} | {wins}")
 
 
 def main():

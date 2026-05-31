@@ -1,0 +1,19 @@
+K,heuristic,K_label,unique_selected_sets_mean,unique_selected_sets_min,unique_selected_sets_max
+500,Coutino,"K<=500 (50% off, 50% active)",2.6,2,3
+500,H1,"K<=500 (50% off, 50% active)",1.0,1,1
+500,H2,"K<=500 (50% off, 50% active)",1.0,1,1
+500,H3-Fast,"K<=500 (50% off, 50% active)",1.0,1,1
+500,H3-threshold-BF,"K<=500 (50% off, 50% active)",1.0,1,1
+500,H3-threshold-Gen,"K<=500 (50% off, 50% active)",1.0,1,1
+500,H3-threshold-Int,"K<=500 (50% off, 50% active)",1.0,1,1
+500,MISO-EE,"K<=500 (50% off, 50% active)",2.7,2,3
+500,Pareto-H2,"K<=500 (50% off, 50% active)",1.0,1,1
+750,Coutino,"K<=750 (25% off, 75% active)",2.1,1,3
+750,H1,"K<=750 (25% off, 75% active)",1.0,1,1
+750,H2,"K<=750 (25% off, 75% active)",1.0,1,1
+750,H3-Fast,"K<=750 (25% off, 75% active)",1.0,1,1
+750,H3-threshold-BF,"K<=750 (25% off, 75% active)",1.0,1,1
+750,H3-threshold-Gen,"K<=750 (25% off, 75% active)",1.0,1,1
+750,H3-threshold-Int,"K<=750 (25% off, 75% active)",1.0,1,1
+750,MISO-EE,"K<=750 (25% off, 75% active)",2.5,2,3
+750,Pareto-H2,"K<=750 (25% off, 75% active)",1.0,1,1

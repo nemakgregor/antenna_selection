@@ -1,5 +1,14 @@
 from .common import calculate_objectives, check_constraints
 from .coutino import solve_coutino_greedy
+from .frame_portfolio import (
+    solve_frame_bf,
+    solve_frame_general,
+    solve_frame_interference,
+    solve_frame_only_bf,
+    solve_frame_only_general,
+    solve_frame_only_interference,
+    solve_frame_portfolio,
+)
 from .h1 import solve_h1
 from .h2 import solve_h2
 from .h3_fast import solve_h3_fast
@@ -12,6 +21,13 @@ __all__ = [
     "calculate_objectives",
     "check_constraints",
     "solve_coutino_greedy",
+    "solve_frame_bf",
+    "solve_frame_general",
+    "solve_frame_interference",
+    "solve_frame_only_bf",
+    "solve_frame_only_general",
+    "solve_frame_only_interference",
+    "solve_frame_portfolio",
     "solve_h1",
     "solve_h2",
     "solve_h3",

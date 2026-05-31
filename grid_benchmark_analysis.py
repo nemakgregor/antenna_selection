@@ -18,6 +18,12 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_frame_bf,
+    solve_frame_general,
+    solve_frame_interference,
+    solve_frame_only_bf,
+    solve_frame_only_general,
+    solve_frame_only_interference,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -34,48 +40,94 @@ METRICS = (
     ("u_g", "General objective", "max"),
 )
 
-ALGORITHMS = (
-    ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
-    ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
-    (
-        "Coutino",
-        lambda V, K, sigma, P: solve_coutino_greedy(V, K, sigma=sigma, P=P),
-    ),
-    (
-        "MISO-EE",
-        lambda V, K, sigma, P: solve_miso_energy_greedy(
-            V, K, sigma=sigma, P=P, target_margin=0.05
+FRAME_FAST_KWARGS = {
+    "max_refined_starts": 3,
+    "max_passes": 2,
+    "remove_limit": 60,
+    "add_limit": 60,
+    "lambdas": (),
+}
+
+
+def build_algorithms():
+    return (
+        ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
+        ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
+        (
+            "Coutino",
+            lambda V, K, sigma, P: solve_coutino_greedy(V, K, sigma=sigma, P=P),
         ),
-    ),
-    (
-        "Pareto-H2",
-        lambda V, K, sigma, P: solve_pareto_interference_greedy(
-            V, K, sigma=sigma, P=P
+        (
+            "MISO-EE",
+            lambda V, K, sigma, P: solve_miso_energy_greedy(
+                V, K, sigma=sigma, P=P, target_margin=0.05
+            ),
         ),
-    ),
-    (
-        "S-threshold-BF",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="bf", sigma=sigma, P=P
+        (
+            "Pareto-H2",
+            lambda V, K, sigma, P: solve_pareto_interference_greedy(
+                V, K, sigma=sigma, P=P
+            ),
         ),
-    ),
-    (
-        "S-threshold-Int",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="int", sigma=sigma, P=P
+        (
+            "S-threshold-BF",
+            lambda V, K, sigma, P: solve_h3(
+                V, K, target_obj="bf", sigma=sigma, P=P
+            ),
         ),
-    ),
-    (
-        "S-threshold-Gen",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="gen", sigma=sigma, P=P
+        (
+            "S-threshold-Int",
+            lambda V, K, sigma, P: solve_h3(
+                V, K, target_obj="int", sigma=sigma, P=P
+            ),
         ),
-    ),
-    (
-        "N-H3-Fast",
-        lambda V, K, sigma, P: solve_h3_fast(V, K),
-    ),
-)
+        (
+            "S-threshold-Gen",
+            lambda V, K, sigma, P: solve_h3(
+                V, K, target_obj="gen", sigma=sigma, P=P
+            ),
+        ),
+        (
+            "Frame-BF",
+            lambda V, K, sigma, P: solve_frame_bf(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "Frame-Int",
+            lambda V, K, sigma, P: solve_frame_interference(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "Frame-Gen",
+            lambda V, K, sigma, P: solve_frame_general(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "FrameOnly-BF",
+            lambda V, K, sigma, P: solve_frame_only_bf(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "FrameOnly-Int",
+            lambda V, K, sigma, P: solve_frame_only_interference(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "FrameOnly-Gen",
+            lambda V, K, sigma, P: solve_frame_only_general(
+                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            ),
+        ),
+        (
+            "N-H3-Fast",
+            lambda V, K, sigma, P: solve_h3_fast(V, K),
+        ),
+    )
 
 
 def parse_args():
@@ -105,6 +157,7 @@ def run_solver(name, solver, V, K, sigma, P):
         elapsed_seconds = time.perf_counter() - started_at
         valid, active_count = check_constraints(x, K)
         u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
+        log2_u_g = np.log2(max(u_g, np.finfo(float).tiny))
 
     if not valid or not np.isfinite([u_bf, u_i, u_g]).all():
         raise RuntimeError(f"Invalid result for {name}.")
@@ -115,11 +168,15 @@ def run_solver(name, solver, V, K, sigma, P):
         "u_bf": float(u_bf),
         "u_i": float(u_i),
         "u_g": float(u_g),
+        "log2_u_g_per_active": float(log2_u_g / active_count)
+        if active_count
+        else 0.0,
+        "u_bf_per_active": float(u_bf / active_count) if active_count else 0.0,
         "elapsed_seconds": float(elapsed_seconds),
     }
 
 
-def run_grid(args):
+def run_grid(args, algorithms):
     rows = []
     total_cases = len(args.off_pcts) * len(args.N_values) * len(args.L_values)
     case_no = 0
@@ -143,7 +200,7 @@ def run_grid(args):
                     np.random.seed(seed)
                     V = generate_V(N, L)
 
-                    for name, solver in ALGORITHMS:
+                    for name, solver in algorithms:
                         result = run_solver(name, solver, V, K, args.sigma, args.P)
                         rows.append(
                             {
@@ -174,6 +231,10 @@ def build_summary(runs):
             u_i_std=("u_i", "std"),
             u_g_mean=("u_g", "mean"),
             u_g_std=("u_g", "std"),
+            log2_u_g_per_active_mean=("log2_u_g_per_active", "mean"),
+            log2_u_g_per_active_std=("log2_u_g_per_active", "std"),
+            u_bf_per_active_mean=("u_bf_per_active", "mean"),
+            u_bf_per_active_std=("u_bf_per_active", "std"),
             elapsed_seconds_mean=("elapsed_seconds", "mean"),
             elapsed_seconds_std=("elapsed_seconds", "std"),
             samples=("sample", "count"),
@@ -214,9 +275,10 @@ def build_wins(runs):
     )
 
 
-def plot_dashboard(summary, wins, out_dir, N, off_pct):
-    heuristics = [name for name, _ in ALGORITHMS]
-    colors = dict(zip(heuristics, plt.cm.tab10.colors[: len(heuristics)]))
+def plot_dashboard(summary, wins, out_dir, N, off_pct, algorithms):
+    heuristics = [name for name, _ in algorithms]
+    cmap = plt.get_cmap("tab20", len(heuristics))
+    colors = {name: cmap(pos) for pos, name in enumerate(heuristics)}
     data = summary[(summary["N"] == N) & (summary["off_pct"] == off_pct)]
     win_data = wins[(wins["N"] == N) & (wins["off_pct"] == off_pct)]
     L_values = sorted(data["L"].unique())
@@ -308,7 +370,66 @@ def plot_dashboard(summary, wins, out_dir, N, off_pct):
     plt.close(fig)
 
 
-def write_report(summary, wins, out_dir, args):
+def plot_energy_efficiency(summary, out_dir, N, off_pct, algorithms):
+    heuristics = [name for name, _ in algorithms]
+    cmap = plt.get_cmap("tab20", len(heuristics))
+    colors = {name: cmap(pos) for pos, name in enumerate(heuristics)}
+    data = summary[(summary["N"] == N) & (summary["off_pct"] == off_pct)]
+    if data.empty:
+        return
+
+    L_values = sorted(data["L"].unique())
+    K_active = int(data["K"].iloc[0])
+    fig, axes = plt.subplots(1, 3, figsize=(18, 5), constrained_layout=True)
+
+    for heuristic in heuristics:
+        curve = data[data["heuristic"] == heuristic].sort_values("L")
+        if curve.empty:
+            continue
+        axes[0].plot(
+            curve["L"],
+            curve["log2_u_g_per_active_mean"],
+            marker="o",
+            linewidth=2,
+            color=colors[heuristic],
+            label=heuristic,
+        )
+        axes[1].plot(
+            curve["L"],
+            curve["u_bf_per_active_mean"],
+            marker="o",
+            linewidth=2,
+            color=colors[heuristic],
+            label=heuristic,
+        )
+        axes[2].plot(
+            curve["L"],
+            curve["active_count_mean"],
+            marker="o",
+            linewidth=2,
+            color=colors[heuristic],
+            label=heuristic,
+        )
+
+    axes[0].set_title("Energy-efficiency proxy")
+    axes[0].set_ylabel("log2(U_G) / active antenna")
+    axes[1].set_title("BF gain per active antenna")
+    axes[1].set_ylabel("U_BF / active antenna")
+    axes[2].set_title("Mean active antennas")
+    axes[2].set_ylabel("active count")
+
+    for ax in axes:
+        ax.set_xlabel("L")
+        ax.set_xticks(L_values)
+        ax.grid(True, alpha=0.25)
+    axes[2].axhline(K_active, color="#333333", linestyle="--", linewidth=1)
+    axes[2].legend(loc="center left", bbox_to_anchor=(1.0, 0.5), fontsize=8)
+    fig.suptitle(f"Energy view, N={N}, {off_pct}% off, K_active={K_active}")
+    fig.savefig(out_dir / f"energy_efficiency_{off_pct}pct_off_N{N}.png", dpi=180)
+    plt.close(fig)
+
+
+def write_report(summary, out_dir, args, algorithms):
     lines = [
         "# Grid Benchmark",
         "",
@@ -316,7 +437,7 @@ def write_report(summary, wins, out_dir, args):
         f"- L values: {args.L_values}",
         f"- off percentages: {args.off_pcts}",
         f"- samples per case: {args.samples}",
-        f"- algorithms: {[name for name, _ in ALGORITHMS]}",
+        f"- algorithms: {[name for name, _ in algorithms]}",
         "",
         "K_active is computed as round(N * (1 - off_pct / 100)).",
         "All algorithm entries call the corresponding implementation directly.",
@@ -345,9 +466,19 @@ def write_report(summary, wins, out_dir, args):
                 .sort_values("elapsed_seconds_mean")
                 .iloc[0]
             )
+            ee_row = (
+                chunk.groupby("heuristic", as_index=False)["log2_u_g_per_active_mean"]
+                .mean()
+                .sort_values("log2_u_g_per_active_mean", ascending=False)
+                .iloc[0]
+            )
             lines.append(
                 f"- Fastest avg runtime: {time_row['heuristic']} "
                 f"({time_row['elapsed_seconds_mean']:.6g}s)"
+            )
+            lines.append(
+                f"- Energy-efficiency proxy: {ee_row['heuristic']} "
+                f"({ee_row['log2_u_g_per_active_mean']:.6g} log2(U_G)/active)"
             )
             lines.append("")
 
@@ -358,10 +489,11 @@ def main():
     args = parse_args()
     if args.samples <= 0:
         raise ValueError("--samples must be positive.")
+    algorithms = build_algorithms()
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    runs = run_grid(args)
+    runs = run_grid(args, algorithms)
     summary = build_summary(runs)
     wins = build_wins(runs)
 
@@ -372,9 +504,10 @@ def main():
 
     for off_pct in args.off_pcts:
         for N in args.N_values:
-            plot_dashboard(summary, wins, args.out_dir, N, off_pct)
+            plot_dashboard(summary, wins, args.out_dir, N, off_pct, algorithms)
+            plot_energy_efficiency(summary, args.out_dir, N, off_pct, algorithms)
 
-    write_report(summary, wins, args.out_dir, args)
+    write_report(summary, args.out_dir, args, algorithms)
     print(f"wrote results to {args.out_dir}")
 
 

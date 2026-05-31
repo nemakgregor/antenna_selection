@@ -19,6 +19,21 @@ For direct comparison with `grid_benchmark`, use `--off-pcts 25 50` instead.
 That matches the benchmark convention where `25` means 25 percent disabled, so
 `K = round(N * 0.75)`.
 
+Power-of-ten sigma repeat for 10 samples with 25 and 50 percent disabled:
+
+```bash
+venv/bin/python sigma_sweep_analysis.py \
+  --N 1000 --L 4 \
+  --off-pcts 25 50 \
+  --samples 10 \
+  --sigmas 1e-10 1e-9 1e-8 1e-7 1e-6 1e-5 1e-4 1e-3 1e-2 1e-1 1 1e1 1e2 1e3 \
+  --seed 42 \
+  --checkpoint-every 1 \
+  --summary-every 1 \
+  --plot-every 10 \
+  --out-dir results/sigma_sweep_N1000_L4_offpct25_50_10samples_pow10
+```
+
 The script rewrites `sigma_sweep_runs.csv` and `sigma_sweep_progress.json` after
 every completed `(sample, K, sigma)` case. Summary CSV files and the report are
 controlled by `--summary-every`; plots are always written at the end and can also

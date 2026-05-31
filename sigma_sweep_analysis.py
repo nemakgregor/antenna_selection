@@ -20,6 +20,9 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_frame_bf,
+    solve_frame_general,
+    solve_frame_interference,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -29,6 +32,14 @@ from algorithms import (
 )
 from motor_challenge_1205 import generate_V
 
+
+FRAME_FAST_KWARGS = {
+    "max_refined_starts": 3,
+    "max_passes": 2,
+    "remove_limit": 60,
+    "add_limit": 60,
+    "lambdas": (),
+}
 
 HEURISTICS = (
     ("H1", lambda V, K, sigma, P, random_state: solve_h1(V, K, sigma=sigma, P=P)),
@@ -67,6 +78,39 @@ HEURISTICS = (
         "H3-threshold-Gen",
         lambda V, K, sigma, P, random_state: solve_h3(
             V, K, target_obj="gen", sigma=sigma, P=P
+        ),
+    ),
+    (
+        "Frame-BF",
+        lambda V, K, sigma, P, random_state: solve_frame_bf(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=random_state,
+            **FRAME_FAST_KWARGS,
+        ),
+    ),
+    (
+        "Frame-Int",
+        lambda V, K, sigma, P, random_state: solve_frame_interference(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=random_state,
+            **FRAME_FAST_KWARGS,
+        ),
+    ),
+    (
+        "Frame-Gen",
+        lambda V, K, sigma, P, random_state: solve_frame_general(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=random_state,
+            **FRAME_FAST_KWARGS,
         ),
     ),
     (
@@ -524,6 +568,9 @@ def plot_sweep(summary, winners, leaders, out_dir, args):
         "H3-threshold-BF": "#8c564b",
         "H3-threshold-Int": "#e377c2",
         "H3-threshold-Gen": "#7f7f7f",
+        "Frame-BF": "#17a398",
+        "Frame-Int": "#b56576",
+        "Frame-Gen": "#3366cc",
         "H3-Fast": "#bcbd22",
     }
     markers = {
@@ -535,6 +582,9 @@ def plot_sweep(summary, winners, leaders, out_dir, args):
         "H3-threshold-BF": "v",
         "H3-threshold-Int": "X",
         "H3-threshold-Gen": "*",
+        "Frame-BF": ">",
+        "Frame-Int": "<",
+        "Frame-Gen": "8",
         "H3-Fast": "h",
     }
     for K in sorted(summary["K"].unique()):

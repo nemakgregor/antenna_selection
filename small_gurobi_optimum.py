@@ -20,6 +20,9 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_frame_bf,
+    solve_frame_general,
+    solve_frame_interference,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -62,6 +65,51 @@ HEURISTICS = (
         "H3-threshold-Gen",
         lambda V, K, sigma, P: solve_h3(
             V, K, target_obj="gen", sigma=sigma, P=P
+        ),
+    ),
+    (
+        "Frame-BF",
+        lambda V, K, sigma, P: solve_frame_bf(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=0,
+            max_refined_starts=12,
+            max_passes=20,
+            remove_limit=None,
+            add_limit=None,
+            random_restarts=20,
+        ),
+    ),
+    (
+        "Frame-Int",
+        lambda V, K, sigma, P: solve_frame_interference(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=0,
+            max_refined_starts=12,
+            max_passes=20,
+            remove_limit=None,
+            add_limit=None,
+            random_restarts=20,
+        ),
+    ),
+    (
+        "Frame-Gen",
+        lambda V, K, sigma, P: solve_frame_general(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=0,
+            max_refined_starts=12,
+            max_passes=20,
+            remove_limit=None,
+            add_limit=None,
+            random_restarts=20,
         ),
     ),
     ("H3-Fast", lambda V, K, sigma, P: solve_h3_fast(V, K, random_state=0)),
@@ -511,6 +559,9 @@ def plot_comparison(comparison, out_dir, args):
         "H3-threshold-BF": "#8c564b",
         "H3-threshold-Int": "#e377c2",
         "H3-threshold-Gen": "#7f7f7f",
+        "Frame-BF": "#17a398",
+        "Frame-Int": "#b56576",
+        "Frame-Gen": "#3366cc",
         "H3-Fast": "#bcbd22",
     }
     fig, axes = plt.subplots(2, 2, figsize=(15, 9), constrained_layout=True)
@@ -894,6 +945,9 @@ def plot_multi_objective_summary(summary, objectives, out_dir):
         "H3-threshold-BF": "#8c564b",
         "H3-threshold-Int": "#e377c2",
         "H3-threshold-Gen": "#7f7f7f",
+        "Frame-BF": "#17a398",
+        "Frame-Int": "#b56576",
+        "Frame-Gen": "#3366cc",
         "H3-Fast": "#bcbd22",
     }
 
