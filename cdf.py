@@ -23,6 +23,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
     solve_h2,
@@ -47,18 +48,20 @@ DEFAULT_ALGORITHMS = (
     "H2",
     "H3",
     "FrameOnly-Gen",
+    "CapWindow-Gen",
     "S-threshold-Gen",
     "Coutino",
 )
 
-OUR_ALGORITHMS = ("FrameOnly-Gen", "S-threshold-Gen", "Coutino")
-FOCUSED_H3_FRAMEONLY = ("H3", "FrameOnly-Gen")
+OUR_ALGORITHMS = ("FrameOnly-Gen", "CapWindow-Gen", "S-threshold-Gen", "Coutino")
+FOCUSED_H3_CAP_WINDOW = ("H3", "FrameOnly-Gen", "CapWindow-Gen")
 
 ALGORITHM_COLORS = {
     "H1": "#0072B2",
     "H2": "#D55E00",
     "H3": "#009E73",
     "FrameOnly-Gen": "#6A3D9A",
+    "CapWindow-Gen": "#1F78B4",
     "Frame-Gen": "#CC79A7",
     "S-threshold-Gen": "#E69F00",
     "Coutino": "#000000",
@@ -193,6 +196,16 @@ def build_algorithms():
                 random_state=random_state,
                 external_starts=False,
                 **FRAME_FAST_KWARGS,
+            ),
+        ),
+        (
+            "CapWindow-Gen",
+            lambda V, K, sigma, P, random_state: solve_cap_window_gen(
+                V,
+                K,
+                sigma=sigma,
+                P=P,
+                random_state=random_state,
             ),
         ),
         (
@@ -832,10 +845,12 @@ def write_outputs(runs, algorithms, out_dir):
 
     summary = build_summary(runs)
     atomic_write_csv(summary, out_dir / "cdf_summary.csv")
-    improvement = build_baseline_improvement(runs)
-    atomic_write_csv(improvement, out_dir / "cdf_baseline_improvement.csv")
-    write_improvement_report(improvement, out_dir / "cdf_baseline_improvement.md")
-    write_our_vs_h123_report(improvement, out_dir)
+    baseline_names = ("H1", "H2", "H3")
+    if set(baseline_names).issubset(set(runs["algorithm"])):
+        improvement = build_baseline_improvement(runs, baseline_names=baseline_names)
+        atomic_write_csv(improvement, out_dir / "cdf_baseline_improvement.csv")
+        write_improvement_report(improvement, out_dir / "cdf_baseline_improvement.md")
+        write_our_vs_h123_report(improvement, out_dir)
     plot_cdf(
         runs,
         algorithms,
@@ -853,27 +868,27 @@ def write_outputs(runs, algorithms, out_dir):
         out_dir / "cdf_runtime_seconds.png",
         log_y=True,
     )
-    if set(FOCUSED_H3_FRAMEONLY).issubset(selected):
+    if set(FOCUSED_H3_CAP_WINDOW).issubset(selected):
         focused_algorithms = tuple(
             (name, solver)
             for name, solver in algorithms
-            if name in FOCUSED_H3_FRAMEONLY
+            if name in FOCUSED_H3_CAP_WINDOW
         )
         plot_cdf(
             runs,
             focused_algorithms,
             "u_g_db",
             "10 lg(U_G), dB",
-            "Focused cumulative distribution: H3 vs FrameOnly-Gen",
-            out_dir / "cdf_u_g_db_h3_frameonly.png",
+            "Focused cumulative distribution: H3 vs FrameOnly-Gen vs CapWindow-Gen",
+            out_dir / "cdf_u_g_db_h3_frameonly_capwindow.png",
         )
         plot_cdf(
             runs,
             focused_algorithms,
             "elapsed_seconds",
             "Elapsed time, seconds",
-            "Focused solver runtime: H3 vs FrameOnly-Gen",
-            out_dir / "cdf_runtime_seconds_h3_frameonly.png",
+            "Focused solver runtime: H3 vs FrameOnly-Gen vs CapWindow-Gen",
+            out_dir / "cdf_runtime_seconds_h3_frameonly_capwindow.png",
             log_y=True,
         )
 
@@ -895,21 +910,21 @@ def main():
         runs = run_benchmark(args, algorithms, runs_path)
     write_outputs(runs, algorithms, args.out_dir)
     print("Wrote:", flush=True)
-    print(f"  {args.out_dir / 'cdf_runs.csv'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_summary.csv'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_baseline_improvement.csv'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_baseline_improvement.md'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_our_vs_h123.csv'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_our_vs_h123.md'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_u_g_db.png'}", flush=True)
-    print(f"  {args.out_dir / 'cdf_runtime_seconds.png'}", flush=True)
-    if (args.out_dir / "cdf_u_g_db_h3_frameonly.png").exists():
-        print(f"  {args.out_dir / 'cdf_u_g_db_h3_frameonly.png'}", flush=True)
-    if (args.out_dir / "cdf_runtime_seconds_h3_frameonly.png").exists():
-        print(
-            f"  {args.out_dir / 'cdf_runtime_seconds_h3_frameonly.png'}",
-            flush=True,
-        )
+    for output_name in (
+        "cdf_runs.csv",
+        "cdf_summary.csv",
+        "cdf_baseline_improvement.csv",
+        "cdf_baseline_improvement.md",
+        "cdf_our_vs_h123.csv",
+        "cdf_our_vs_h123.md",
+        "cdf_u_g_db.png",
+        "cdf_runtime_seconds.png",
+        "cdf_u_g_db_h3_frameonly_capwindow.png",
+        "cdf_runtime_seconds_h3_frameonly_capwindow.png",
+    ):
+        output_path = args.out_dir / output_name
+        if output_path.exists():
+            print(f"  {output_path}", flush=True)
 
 
 if __name__ == "__main__":

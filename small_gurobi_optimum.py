@@ -20,6 +20,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
     solve_h2,
@@ -111,6 +112,12 @@ HEURISTICS = (
             remove_limit=None,
             add_limit=None,
             random_restarts=20,
+        ),
+    ),
+    (
+        "CapWindow-Gen",
+        lambda V, K, sigma, P: solve_cap_window_gen(
+            V, K, sigma=sigma, P=P, random_state=0
         ),
     ),
     ("H3-Fast", lambda V, K, sigma, P: solve_h3_fast(V, K, random_state=0)),

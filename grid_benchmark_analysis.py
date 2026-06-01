@@ -18,6 +18,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
     solve_h2,
@@ -134,6 +135,12 @@ def build_algorithms():
                 P=P,
                 external_starts=False,
                 **FRAME_FAST_KWARGS,
+            ),
+        ),
+        (
+            "CapWindow-Gen",
+            lambda V, K, sigma, P: solve_cap_window_gen(
+                V, K, sigma=sigma, P=P
             ),
         ),
         (

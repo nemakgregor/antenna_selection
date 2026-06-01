@@ -1,4 +1,5 @@
 from .common import calculate_objectives, check_constraints
+from .cap_window import solve_cap_window_gen
 from .coutino import solve_coutino_greedy
 from .frame_portfolio import solve_frame_portfolio
 from .h1 import solve_h1
@@ -14,6 +15,7 @@ __all__ = [
     "calculate_objectives",
     "check_constraints",
     "solve_coutino_greedy",
+    "solve_cap_window_gen",
     "solve_frame_portfolio",
     "solve_h1",
     "solve_h2",

@@ -9,6 +9,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
+    solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
     solve_h2,
@@ -108,6 +109,16 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
                 remove_limit=50,
                 add_limit=50,
                 lambdas=(),
+            ),
+        ),
+        (
+            "CapWindow-Gen",
+            lambda: solve_cap_window_gen(
+                V,
+                K,
+                sigma=sigma,
+                P=P,
+                random_state=random_state,
             ),
         ),
         (
@@ -275,6 +286,18 @@ class TestAntennaSelection(unittest.TestCase):
             is_valid, num_active = check_constraints(x, self.K)
             self.assertTrue(is_valid)
             self.assertEqual(num_active, self.K)
+
+    def test_cap_window_gen_logic(self):
+        x = solve_cap_window_gen(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
 
     def test_frame_portfolio_gen_includes_h3_start(self):
         h3_x = solve_h3_strong_weak(self.V_L4, self.K, sigma=1.0, P=1.0)
