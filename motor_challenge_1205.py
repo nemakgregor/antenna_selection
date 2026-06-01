@@ -14,6 +14,7 @@ from algorithms import (
     solve_h2,
     solve_h3,
     solve_h3_fast,
+    solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
 )
@@ -41,6 +42,10 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
     algorithms = [
         ("H1", lambda: solve_h1(V, K, sigma=sigma, P=P)),
         ("H2", lambda: solve_h2(V, K, sigma=sigma, P=P)),
+        (
+            "H3",
+            lambda: solve_h3_strong_weak(V, K, sigma=sigma, P=P),
+        ),
         (
             "H3-Fast",
             lambda: solve_h3_fast(V, K, random_state=random_state),
@@ -157,22 +162,25 @@ class TestAntennaSelection(unittest.TestCase):
         x = solve_h1(self.V_L2, self.K)
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
-        self.assertLessEqual(num_active, self.K)
-        self.assertGreaterEqual(num_active, self.V_L2.shape[1])
+        self.assertEqual(num_active, self.K)
+
+        row_power = np.sum(np.abs(self.V_L2) ** 2, axis=1).real
+        weakest_first = np.argsort(row_power)
+        expected_off = weakest_first[: self.N - self.K]
+        actual_off = np.flatnonzero(x == 0)
+        self.assertTrue(np.array_equal(np.sort(actual_off), np.sort(expected_off)))
 
     def test_h2_logic_L2(self):
         x = solve_h2(self.V_L2, self.K)
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
-        self.assertLessEqual(num_active, self.K)
-        self.assertGreaterEqual(num_active, self.V_L2.shape[1])
+        self.assertEqual(num_active, self.K)
 
     def test_h2_logic_generalized_L4(self):
         x = solve_h2(self.V_L4, self.K)
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
-        self.assertLessEqual(num_active, self.K)
-        self.assertGreaterEqual(num_active, self.V_L4.shape[1])
+        self.assertEqual(num_active, self.K)
 
     def test_coutino_greedy_logic(self):
         x = solve_coutino_greedy(self.V_L4, self.K)
@@ -214,6 +222,21 @@ class TestAntennaSelection(unittest.TestCase):
             self.assertTrue(is_valid)
             self.assertEqual(num_active, self.K)
 
+    def test_h3_strong_weak_logic(self):
+        x = solve_h3_strong_weak(self.V_L4, self.K)
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+        row_power = np.sum(np.abs(self.V_L4) ** 2, axis=1).real
+        power_order = np.argsort(row_power)
+        off_count = self.N - self.K
+        weak_drop = off_count // 2
+        strong_drop = off_count - weak_drop
+        expected_off = np.r_[power_order[:weak_drop], power_order[self.N - strong_drop :]]
+        actual_off = np.flatnonzero(x == 0)
+        self.assertTrue(np.array_equal(np.sort(actual_off), np.sort(expected_off)))
+
     def test_h3_threshold_objective_modes(self):
         for target_obj in ("bf", "int", "gen"):
             x = solve_h3(
@@ -252,6 +275,25 @@ class TestAntennaSelection(unittest.TestCase):
             is_valid, num_active = check_constraints(x, self.K)
             self.assertTrue(is_valid)
             self.assertEqual(num_active, self.K)
+
+    def test_frame_portfolio_gen_includes_h3_start(self):
+        h3_x = solve_h3_strong_weak(self.V_L4, self.K, sigma=1.0, P=1.0)
+        frame_x = solve_frame_portfolio(
+            self.V_L4,
+            self.K,
+            target_obj="gen",
+            external_starts=False,
+            random_state=42,
+            max_refined_starts=2,
+            max_passes=1,
+            remove_limit=20,
+            add_limit=20,
+            lambdas=(),
+        )
+
+        h3_u_g = calculate_objectives(self.V_L4, h3_x, sigma=1.0, P=1.0)[2]
+        frame_u_g = calculate_objectives(self.V_L4, frame_x, sigma=1.0, P=1.0)[2]
+        self.assertGreaterEqual(frame_u_g, h3_u_g - 1e-9)
 
     def test_objectives_calculation(self):
         x = solve_h1(self.V_L2, self.K)

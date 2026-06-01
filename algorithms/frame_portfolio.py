@@ -25,6 +25,10 @@ def solve_frame_portfolio(
     h3_fast_refinement_iter=None,
     h3_fast_beam_size=None,
     external_starts=True,
+    include_power_band_start=True,
+    power_band_dopt_lambdas=(1e-2,),
+    power_band_dopt_buffers=(50, 100),
+    power_band_dopt_offset_margin=50,
 ):
     """
     Multi-start frame subset selection.
@@ -55,6 +59,10 @@ def solve_frame_portfolio(
         h3_fast_refinement_iter=h3_fast_refinement_iter,
         h3_fast_beam_size=h3_fast_beam_size,
         external_starts=external_starts,
+        include_power_band_start=include_power_band_start,
+        power_band_dopt_lambdas=power_band_dopt_lambdas,
+        power_band_dopt_buffers=power_band_dopt_buffers,
+        power_band_dopt_offset_margin=power_band_dopt_offset_margin,
     )
 
     scored_starts = []
@@ -141,6 +149,10 @@ def _build_starts(
     h3_fast_refinement_iter,
     h3_fast_beam_size,
     external_starts,
+    include_power_band_start,
+    power_band_dopt_lambdas,
+    power_band_dopt_buffers,
+    power_band_dopt_offset_margin,
 ):
     starts = []
     sorted_idx = context.sorted_power
@@ -148,6 +160,17 @@ def _build_starts(
     buffers = _buffer_sizes(context.N, context.K)
 
     starts.append(_top_power_start(context))
+    if include_power_band_start:
+        starts.append(_power_band_start(context))
+        if target_obj == "gen":
+            starts.extend(
+                _power_band_dopt_starts(
+                    context,
+                    lambdas=power_band_dopt_lambdas,
+                    buffers=power_band_dopt_buffers,
+                    offset_margin=power_band_dopt_offset_margin,
+                )
+            )
 
     for offset in offsets:
         if offset + context.K <= context.N:
@@ -241,6 +264,48 @@ def _buffer_sizes(N, K):
 
 def _top_power_start(context):
     return _indices_to_active(context, context.sorted_power[: context.K])
+
+
+def _power_band_start(context):
+    off_count = context.N - context.K
+    weak_drop = off_count // 2
+    strong_drop = off_count - weak_drop
+
+    power_order = np.argsort(context.row_power)
+    active = np.ones(context.N, dtype=bool)
+    if weak_drop:
+        active[power_order[:weak_drop]] = False
+    if strong_drop:
+        active[power_order[context.N - strong_drop :]] = False
+    return _repair_active(context, active)
+
+
+def _power_band_dopt_starts(context, lambdas, buffers, offset_margin):
+    if not lambdas or not buffers:
+        return []
+
+    off_count = context.N - context.K
+    weak_drop = off_count // 2
+    strong_drop = off_count - weak_drop
+    max_offset = context.N - context.K
+    margin = max(0, int(offset_margin))
+    offsets = []
+    seen = set()
+    for value in (strong_drop - margin, strong_drop, strong_drop + margin):
+        value = int(np.clip(value, 0, max_offset))
+        if value not in seen:
+            seen.add(value)
+            offsets.append(value)
+
+    starts = []
+    for offset in offsets:
+        for buffer in buffers:
+            buffer = int(buffer)
+            if buffer <= 0 or offset + context.K + buffer > context.N:
+                continue
+            for lam in lambdas:
+                starts.append(_dopt_pool_start(context, offset, buffer, lam))
+    return starts
 
 
 def _frame_pool_start(context, offset, buffer):
