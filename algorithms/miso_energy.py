@@ -1,7 +1,6 @@
 import numpy as np
 
 from .common import calculate_objectives
-from .coutino import solve_coutino_greedy
 from .h1 import solve_h1
 from .h2 import solve_h2
 
@@ -52,7 +51,7 @@ def solve_miso_energy_greedy(
         log_g = log_g.real if sign > 0.0 and np.isfinite(log_g) else -np.inf
 
         if active_count <= K:
-            if log_g > best_log_g:
+            if best_x is None or log_g > best_log_g:
                 best_log_g = log_g
                 best_x = active.astype(int).copy()
             if log_g >= target_log_g:
@@ -92,6 +91,4 @@ def solve_miso_energy_greedy(
 
     if smallest_target_x is not None:
         return smallest_target_x
-    if best_x is not None:
-        return best_x
-    return solve_coutino_greedy(V, K, sigma=sigma, P=P)
+    return best_x

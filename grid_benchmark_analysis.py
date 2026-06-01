@@ -18,12 +18,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
-    solve_frame_bf,
-    solve_frame_general,
-    solve_frame_interference,
-    solve_frame_only_bf,
-    solve_frame_only_general,
-    solve_frame_only_interference,
+    solve_frame_portfolio,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -89,38 +84,56 @@ def build_algorithms():
         ),
         (
             "Frame-BF",
-            lambda V, K, sigma, P: solve_frame_bf(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V, K, target_obj="bf", sigma=sigma, P=P, **FRAME_FAST_KWARGS
             ),
         ),
         (
             "Frame-Int",
-            lambda V, K, sigma, P: solve_frame_interference(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V, K, target_obj="int", sigma=sigma, P=P, **FRAME_FAST_KWARGS
             ),
         ),
         (
             "Frame-Gen",
-            lambda V, K, sigma, P: solve_frame_general(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V, K, target_obj="gen", sigma=sigma, P=P, **FRAME_FAST_KWARGS
             ),
         ),
         (
             "FrameOnly-BF",
-            lambda V, K, sigma, P: solve_frame_only_bf(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V,
+                K,
+                target_obj="bf",
+                sigma=sigma,
+                P=P,
+                external_starts=False,
+                **FRAME_FAST_KWARGS,
             ),
         ),
         (
             "FrameOnly-Int",
-            lambda V, K, sigma, P: solve_frame_only_interference(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V,
+                K,
+                target_obj="int",
+                sigma=sigma,
+                P=P,
+                external_starts=False,
+                **FRAME_FAST_KWARGS,
             ),
         ),
         (
             "FrameOnly-Gen",
-            lambda V, K, sigma, P: solve_frame_only_general(
-                V, K, sigma=sigma, P=P, **FRAME_FAST_KWARGS
+            lambda V, K, sigma, P: solve_frame_portfolio(
+                V,
+                K,
+                target_obj="gen",
+                sigma=sigma,
+                P=P,
+                external_starts=False,
+                **FRAME_FAST_KWARGS,
             ),
         ),
         (

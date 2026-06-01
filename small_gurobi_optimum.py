@@ -20,9 +20,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
-    solve_frame_bf,
-    solve_frame_general,
-    solve_frame_interference,
+    solve_frame_portfolio,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -69,9 +67,10 @@ HEURISTICS = (
     ),
     (
         "Frame-BF",
-        lambda V, K, sigma, P: solve_frame_bf(
+        lambda V, K, sigma, P: solve_frame_portfolio(
             V,
             K,
+            target_obj="bf",
             sigma=sigma,
             P=P,
             random_state=0,
@@ -84,9 +83,10 @@ HEURISTICS = (
     ),
     (
         "Frame-Int",
-        lambda V, K, sigma, P: solve_frame_interference(
+        lambda V, K, sigma, P: solve_frame_portfolio(
             V,
             K,
+            target_obj="int",
             sigma=sigma,
             P=P,
             random_state=0,
@@ -99,9 +99,10 @@ HEURISTICS = (
     ),
     (
         "Frame-Gen",
-        lambda V, K, sigma, P: solve_frame_general(
+        lambda V, K, sigma, P: solve_frame_portfolio(
             V,
             K,
+            target_obj="gen",
             sigma=sigma,
             P=P,
             random_state=0,
@@ -117,30 +118,23 @@ HEURISTICS = (
 
 STANDARD_OBJECTIVES = {
     "bf": {
-        "internal": "bf",
+        "exact_objective": "bf",
         "metric": "u_bf",
         "direction": "max",
         "label": "BF gain",
     },
     "int": {
-        "internal": "interference",
+        "exact_objective": "interference",
         "metric": "u_i",
         "direction": "min",
         "label": "Interference",
     },
     "gen": {
-        "internal": "general",
+        "exact_objective": "general",
         "metric": "u_g",
         "direction": "max",
         "label": "General objective",
     },
-}
-OBJECTIVE_ALIASES = {
-    "bf": "bf",
-    "int": "int",
-    "interference": "int",
-    "gen": "gen",
-    "general": "gen",
 }
 
 
@@ -237,11 +231,11 @@ def parse_args():
     parser.add_argument(
         "--objectives",
         nargs="+",
-        choices=sorted(OBJECTIVE_ALIASES),
+        choices=sorted(STANDARD_OBJECTIVES),
         default=None,
         help=(
             "Run several exact Gurobi objectives. Use bf/int/gen to mirror "
-            "h3_threshold.py; aliases general and interference are accepted."
+            "h3_threshold.py."
         ),
     )
     parser.add_argument(
@@ -648,18 +642,6 @@ def write_report(comparison, optimum, candidate_count, out_dir, args):
     (out_dir / "gurobi_small_report.md").write_text("\n".join(lines), encoding="utf-8")
 
 
-def normalize_standard_objectives(objectives):
-    normalized = []
-    seen = set()
-    for objective in objectives:
-        key = OBJECTIVE_ALIASES[objective]
-        if key in seen:
-            continue
-        normalized.append(key)
-        seen.add(key)
-    return normalized
-
-
 def verify_exact_optimum(rows, optimum, objective, bf_floor, interference_weight, interference_ceiling):
     direct_started_at = time.perf_counter()
     direct_optimum = direct_exact_optimum(
@@ -698,9 +680,7 @@ def run_multi_objective_benchmark(args):
     if args.samples <= 0:
         raise ValueError("--samples must be positive.")
 
-    objectives = normalize_standard_objectives(
-        args.objectives if args.objectives is not None else ["bf", "int", "gen"]
-    )
+    objectives = list(dict.fromkeys(args.objectives or ["bf", "int", "gen"]))
     K = int(round(args.N * args.active_frac))
     min_active = args.L if args.min_active is None else args.min_active
     if not (0 <= min_active <= K <= args.N):
@@ -744,7 +724,7 @@ def run_multi_objective_benchmark(args):
         for objective_pos, target_obj in enumerate(objectives, start=1):
             case_no = sample_idx * len(objectives) + objective_pos
             spec = STANDARD_OBJECTIVES[target_obj]
-            objective = spec["internal"]
+            objective = spec["exact_objective"]
             print(
                 f"  [{case_no}/{total_cases}] Solving Gurobi objective={target_obj} "
                 f"with {len(rows)} subset variables",
@@ -806,7 +786,7 @@ def run_multi_objective_benchmark(args):
 
         for target_obj in objectives:
             spec = STANDARD_OBJECTIVES[target_obj]
-            objective = spec["internal"]
+            objective = spec["exact_objective"]
             target_solution = next(
                 solution
                 for solution in sample_gurobi_solutions

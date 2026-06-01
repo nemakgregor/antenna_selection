@@ -9,12 +9,7 @@ from algorithms import (
     calculate_objectives,
     check_constraints,
     solve_coutino_greedy,
-    solve_frame_bf,
-    solve_frame_general,
-    solve_frame_interference,
-    solve_frame_only_bf,
-    solve_frame_only_general,
-    solve_frame_only_interference,
+    solve_frame_portfolio,
     solve_h1,
     solve_h2,
     solve_h3,
@@ -64,9 +59,10 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
         ),
         (
             "Frame-BF",
-            lambda: solve_frame_bf(
+            lambda: solve_frame_portfolio(
                 V,
                 K,
+                target_obj="bf",
                 sigma=sigma,
                 P=P,
                 random_state=random_state,
@@ -79,9 +75,10 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
         ),
         (
             "Frame-Int",
-            lambda: solve_frame_interference(
+            lambda: solve_frame_portfolio(
                 V,
                 K,
+                target_obj="int",
                 sigma=sigma,
                 P=P,
                 random_state=random_state,
@@ -94,9 +91,10 @@ def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
         ),
         (
             "Frame-Gen",
-            lambda: solve_frame_general(
+            lambda: solve_frame_portfolio(
                 V,
                 K,
+                target_obj="gen",
                 sigma=sigma,
                 P=P,
                 random_state=random_state,
@@ -230,18 +228,20 @@ class TestAntennaSelection(unittest.TestCase):
             self.assertEqual(num_active, self.K)
 
     def test_frame_portfolio_logic(self):
-        solvers = (
-            solve_frame_bf,
-            solve_frame_interference,
-            solve_frame_general,
-            solve_frame_only_bf,
-            solve_frame_only_interference,
-            solve_frame_only_general,
+        variants = (
+            ("bf", True),
+            ("int", True),
+            ("gen", True),
+            ("bf", False),
+            ("int", False),
+            ("gen", False),
         )
-        for solver in solvers:
-            x = solver(
+        for target_obj, external_starts in variants:
+            x = solve_frame_portfolio(
                 self.V_L4,
                 self.K,
+                target_obj=target_obj,
+                external_starts=external_starts,
                 random_state=42,
                 max_refined_starts=2,
                 max_passes=1,
