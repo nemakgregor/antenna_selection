@@ -22,26 +22,9 @@ except ImportError:
 from algorithms import (
     calculate_objectives,
     check_constraints,
-    solve_coutino_greedy,
-    solve_cap_window_gen,
-    solve_frame_portfolio,
-    solve_h1,
-    solve_h2,
-    solve_h3,
-    solve_h3_fast,
-    solve_h3_strong_weak,
-    solve_miso_energy_greedy,
-    solve_pareto_interference_greedy,
 )
+from benchmark_algorithms import CDF_SOLVERS
 
-
-FRAME_FAST_KWARGS = {
-    "max_refined_starts": 3,
-    "max_passes": 2,
-    "remove_limit": 60,
-    "add_limit": 60,
-    "lambdas": (),
-}
 
 DEFAULT_ALGORITHMS = (
     "H1",
@@ -75,146 +58,6 @@ def generate_v_from_rng(rng, N, L):
     antenna_max = np.max(np.linalg.norm(V, axis=1))
     V /= antenna_max
     return V
-
-
-def build_algorithms():
-    return (
-        ("H1", lambda V, K, sigma, P, random_state: solve_h1(V, K, sigma=sigma, P=P)),
-        ("H2", lambda V, K, sigma, P, random_state: solve_h2(V, K, sigma=sigma, P=P)),
-        (
-            "H3",
-            lambda V, K, sigma, P, random_state: solve_h3_strong_weak(
-                V, K, sigma=sigma, P=P
-            ),
-        ),
-        (
-            "Coutino",
-            lambda V, K, sigma, P, random_state: solve_coutino_greedy(
-                V, K, sigma=sigma, P=P
-            ),
-        ),
-        (
-            "MISO-EE",
-            lambda V, K, sigma, P, random_state: solve_miso_energy_greedy(
-                V, K, sigma=sigma, P=P, target_margin=0.05
-            ),
-        ),
-        (
-            "Pareto-H2",
-            lambda V, K, sigma, P, random_state: solve_pareto_interference_greedy(
-                V, K, sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-BF",
-            lambda V, K, sigma, P, random_state: solve_h3(
-                V, K, target_obj="bf", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-Int",
-            lambda V, K, sigma, P, random_state: solve_h3(
-                V, K, target_obj="int", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-Gen",
-            lambda V, K, sigma, P, random_state: solve_h3(
-                V, K, target_obj="gen", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "Frame-BF",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="bf",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "Frame-Int",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="int",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "Frame-Gen",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="gen",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "FrameOnly-BF",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="bf",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "FrameOnly-Int",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="int",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "FrameOnly-Gen",
-            lambda V, K, sigma, P, random_state: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="gen",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "CapWindow-Gen",
-            lambda V, K, sigma, P, random_state: solve_cap_window_gen(
-                V,
-                K,
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-            ),
-        ),
-        (
-            "N-H3-Fast",
-            lambda V, K, sigma, P, random_state: solve_h3_fast(
-                V, K, random_state=random_state
-            ),
-        ),
-    )
 
 
 def parse_args():
@@ -899,7 +742,7 @@ def main():
     args.out_dir = args.out_dir or default_out_dir(args)
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
-    algorithms = select_algorithms(build_algorithms(), args)
+    algorithms = select_algorithms(CDF_SOLVERS, args)
 
     runs_path = args.out_dir / "cdf_runs.csv"
     if args.plot_only:

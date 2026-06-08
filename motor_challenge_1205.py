@@ -5,6 +5,7 @@ import unittest
 import numpy as np
 from numpy.random import normal
 
+from benchmark_algorithms import MOTOR_SOLVERS
 from algorithms import (
     calculate_objectives,
     check_constraints,
@@ -40,107 +41,11 @@ def generate_V(N, L):
 
 
 def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
-    algorithms = [
-        ("H1", lambda: solve_h1(V, K, sigma=sigma, P=P)),
-        ("H2", lambda: solve_h2(V, K, sigma=sigma, P=P)),
-        (
-            "H3",
-            lambda: solve_h3_strong_weak(V, K, sigma=sigma, P=P),
-        ),
-        (
-            "H3-Fast",
-            lambda: solve_h3_fast(V, K, random_state=random_state),
-        ),
-        (
-            "H3-BF",
-            lambda: solve_h3(V, K, target_obj="bf", sigma=sigma, P=P),
-        ),
-        (
-            "H3-Int",
-            lambda: solve_h3(V, K, target_obj="int", sigma=sigma, P=P),
-        ),
-        (
-            "H3-Gen",
-            lambda: solve_h3(V, K, target_obj="gen", sigma=sigma, P=P),
-        ),
-        (
-            "Frame-BF",
-            lambda: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="bf",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                max_refined_starts=3,
-                max_passes=2,
-                remove_limit=50,
-                add_limit=50,
-                lambdas=(),
-            ),
-        ),
-        (
-            "Frame-Int",
-            lambda: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="int",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                max_refined_starts=3,
-                max_passes=2,
-                remove_limit=50,
-                add_limit=50,
-                lambdas=(),
-            ),
-        ),
-        (
-            "Frame-Gen",
-            lambda: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="gen",
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-                max_refined_starts=3,
-                max_passes=2,
-                remove_limit=50,
-                add_limit=50,
-                lambdas=(),
-            ),
-        ),
-        (
-            "CapWindow-Gen",
-            lambda: solve_cap_window_gen(
-                V,
-                K,
-                sigma=sigma,
-                P=P,
-                random_state=random_state,
-            ),
-        ),
-        (
-            "Coutino",
-            lambda: solve_coutino_greedy(V, K, sigma=sigma, P=P),
-        ),
-        (
-            "MISO-EE",
-            lambda: solve_miso_energy_greedy(
-                V, K, sigma=sigma, P=P, target_margin=0.05
-            ),
-        ),
-        (
-            "Pareto-H2",
-            lambda: solve_pareto_interference_greedy(V, K, sigma=sigma, P=P),
-        ),
-    ]
     results = {}
 
     with np.errstate(all="ignore"):
-        for name, solver in algorithms:
-            x = solver()
+        for name, solver in MOTOR_SOLVERS:
+            x = solver(V, K, sigma, P, random_state)
             valid, active_count = check_constraints(x, K)
             u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
             results[name] = {

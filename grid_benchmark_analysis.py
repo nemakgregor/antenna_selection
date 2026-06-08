@@ -17,16 +17,8 @@ import pandas as pd
 from algorithms import (
     calculate_objectives,
     check_constraints,
-    solve_coutino_greedy,
-    solve_cap_window_gen,
-    solve_frame_portfolio,
-    solve_h1,
-    solve_h2,
-    solve_h3,
-    solve_h3_fast,
-    solve_miso_energy_greedy,
-    solve_pareto_interference_greedy,
 )
+from benchmark_algorithms import GRID_SOLVERS
 from motor_challenge_1205 import generate_V
 
 
@@ -35,120 +27,6 @@ METRICS = (
     ("u_i", "Interference", "min"),
     ("u_g", "General objective", "max"),
 )
-
-FRAME_FAST_KWARGS = {
-    "max_refined_starts": 3,
-    "max_passes": 2,
-    "remove_limit": 60,
-    "add_limit": 60,
-    "lambdas": (),
-}
-
-
-def build_algorithms():
-    return (
-        ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
-        ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
-        (
-            "Coutino",
-            lambda V, K, sigma, P: solve_coutino_greedy(V, K, sigma=sigma, P=P),
-        ),
-        (
-            "MISO-EE",
-            lambda V, K, sigma, P: solve_miso_energy_greedy(
-                V, K, sigma=sigma, P=P, target_margin=0.05
-            ),
-        ),
-        (
-            "Pareto-H2",
-            lambda V, K, sigma, P: solve_pareto_interference_greedy(
-                V, K, sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-BF",
-            lambda V, K, sigma, P: solve_h3(
-                V, K, target_obj="bf", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-Int",
-            lambda V, K, sigma, P: solve_h3(
-                V, K, target_obj="int", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "S-threshold-Gen",
-            lambda V, K, sigma, P: solve_h3(
-                V, K, target_obj="gen", sigma=sigma, P=P
-            ),
-        ),
-        (
-            "Frame-BF",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V, K, target_obj="bf", sigma=sigma, P=P, **FRAME_FAST_KWARGS
-            ),
-        ),
-        (
-            "Frame-Int",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V, K, target_obj="int", sigma=sigma, P=P, **FRAME_FAST_KWARGS
-            ),
-        ),
-        (
-            "Frame-Gen",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V, K, target_obj="gen", sigma=sigma, P=P, **FRAME_FAST_KWARGS
-            ),
-        ),
-        (
-            "FrameOnly-BF",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="bf",
-                sigma=sigma,
-                P=P,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "FrameOnly-Int",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="int",
-                sigma=sigma,
-                P=P,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "FrameOnly-Gen",
-            lambda V, K, sigma, P: solve_frame_portfolio(
-                V,
-                K,
-                target_obj="gen",
-                sigma=sigma,
-                P=P,
-                external_starts=False,
-                **FRAME_FAST_KWARGS,
-            ),
-        ),
-        (
-            "CapWindow-Gen",
-            lambda V, K, sigma, P: solve_cap_window_gen(
-                V, K, sigma=sigma, P=P
-            ),
-        ),
-        (
-            "N-H3-Fast",
-            lambda V, K, sigma, P: solve_h3_fast(V, K),
-        ),
-    )
-
 
 def parse_args():
     parser = argparse.ArgumentParser(
@@ -509,7 +387,7 @@ def main():
     args = parse_args()
     if args.samples <= 0:
         raise ValueError("--samples must be positive.")
-    algorithms = build_algorithms()
+    algorithms = GRID_SOLVERS
 
     args.out_dir.mkdir(parents=True, exist_ok=True)
 

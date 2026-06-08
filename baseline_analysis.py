@@ -17,12 +17,8 @@ import pandas as pd
 from algorithms import (
     calculate_objectives,
     check_constraints,
-    solve_coutino_greedy,
-    solve_h1,
-    solve_h2,
-    solve_miso_energy_greedy,
-    solve_pareto_interference_greedy,
 )
+from benchmark_algorithms import BASELINE_SOLVERS
 from motor_challenge_1205 import generate_V
 
 
@@ -36,28 +32,7 @@ BASELINE_HEURISTICS = ("H1", "H2")
 PERFORMANCE_HEURISTIC = "Coutino"
 ENERGY_HEURISTIC = "MISO-EE"
 BALANCED_HEURISTIC = "Pareto-H2"
-HEURISTICS = (
-    ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
-    ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
-    (
-        PERFORMANCE_HEURISTIC,
-        lambda V, K, sigma, P: solve_coutino_greedy(
-            V, K, sigma=sigma, P=P
-        ),
-    ),
-    (
-        ENERGY_HEURISTIC,
-        lambda V, K, sigma, P: solve_miso_energy_greedy(
-            V, K, sigma=sigma, P=P, target_margin=0.05
-        ),
-    ),
-    (
-        BALANCED_HEURISTIC,
-        lambda V, K, sigma, P: solve_pareto_interference_greedy(
-            V, K, sigma=sigma, P=P
-        ),
-    ),
-)
+HEURISTICS = BASELINE_SOLVERS
 
 
 def parse_args():

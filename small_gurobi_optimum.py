@@ -19,109 +19,11 @@ import pandas as pd
 from algorithms import (
     calculate_objectives,
     check_constraints,
-    solve_coutino_greedy,
-    solve_cap_window_gen,
-    solve_frame_portfolio,
-    solve_h1,
     solve_h2,
-    solve_h3,
-    solve_h3_fast,
-    solve_miso_energy_greedy,
-    solve_pareto_interference_greedy,
 )
+from benchmark_algorithms import SMALL_GUROBI_HEURISTICS as HEURISTICS
 from motor_challenge_1205 import generate_V
 
-
-HEURISTICS = (
-    ("H1", lambda V, K, sigma, P: solve_h1(V, K, sigma=sigma, P=P)),
-    ("H2", lambda V, K, sigma, P: solve_h2(V, K, sigma=sigma, P=P)),
-    ("Coutino", lambda V, K, sigma, P: solve_coutino_greedy(V, K, sigma=sigma, P=P)),
-    (
-        "MISO-EE",
-        lambda V, K, sigma, P: solve_miso_energy_greedy(
-            V, K, sigma=sigma, P=P, target_margin=0.05
-        ),
-    ),
-    (
-        "Pareto-H2",
-        lambda V, K, sigma, P: solve_pareto_interference_greedy(
-            V, K, sigma=sigma, P=P
-        ),
-    ),
-    (
-        "H3-threshold-BF",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="bf", sigma=sigma, P=P
-        ),
-    ),
-    (
-        "H3-threshold-Int",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="int", sigma=sigma, P=P
-        ),
-    ),
-    (
-        "H3-threshold-Gen",
-        lambda V, K, sigma, P: solve_h3(
-            V, K, target_obj="gen", sigma=sigma, P=P
-        ),
-    ),
-    (
-        "Frame-BF",
-        lambda V, K, sigma, P: solve_frame_portfolio(
-            V,
-            K,
-            target_obj="bf",
-            sigma=sigma,
-            P=P,
-            random_state=0,
-            max_refined_starts=12,
-            max_passes=20,
-            remove_limit=None,
-            add_limit=None,
-            random_restarts=20,
-        ),
-    ),
-    (
-        "Frame-Int",
-        lambda V, K, sigma, P: solve_frame_portfolio(
-            V,
-            K,
-            target_obj="int",
-            sigma=sigma,
-            P=P,
-            random_state=0,
-            max_refined_starts=12,
-            max_passes=20,
-            remove_limit=None,
-            add_limit=None,
-            random_restarts=20,
-        ),
-    ),
-    (
-        "Frame-Gen",
-        lambda V, K, sigma, P: solve_frame_portfolio(
-            V,
-            K,
-            target_obj="gen",
-            sigma=sigma,
-            P=P,
-            random_state=0,
-            max_refined_starts=12,
-            max_passes=20,
-            remove_limit=None,
-            add_limit=None,
-            random_restarts=20,
-        ),
-    ),
-    (
-        "CapWindow-Gen",
-        lambda V, K, sigma, P: solve_cap_window_gen(
-            V, K, sigma=sigma, P=P, random_state=0
-        ),
-    ),
-    ("H3-Fast", lambda V, K, sigma, P: solve_h3_fast(V, K, random_state=0)),
-)
 
 STANDARD_OBJECTIVES = {
     "bf": {
