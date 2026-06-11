@@ -1,6 +1,6 @@
 # Small Gurobi Benchmark
 
-This repository uses `small_gurobi_optimum.py` for exact small-case comparisons.
+This repository uses `venv/bin/python -m experiments.gurobi_exact` for exact small-case comparisons.
 The script enumerates feasible subsets, asks Gurobi to select the exact optimum
 for the requested objective, verifies the answer with a direct scan, then compares
 the optimum with all heuristic algorithms.
@@ -26,7 +26,7 @@ Multi-objective runs expose the exact solver as three separate algorithms:
 ## Reproduce Current Run
 
 ```bash
-venv/bin/python small_gurobi_optimum.py \
+venv/bin/python -m experiments.gurobi_exact \
   --N 18 \
   --L 4 \
   --active-frac 0.5 \
@@ -62,7 +62,7 @@ against the three `h3_threshold.py` target modes, run three separate exact
 Gurobi objectives on each random sample:
 
 ```bash
-venv/bin/python small_gurobi_optimum.py \
+venv/bin/python -m experiments.gurobi_exact \
   --N 18 \
   --L 4 \
   --active-frac 0.5 \
@@ -100,7 +100,7 @@ The next heavier exact case increases both antenna count and layer count while
 staying below the default laptop-scale exact-search ceiling:
 
 ```bash
-venv/bin/python small_gurobi_optimum.py \
+venv/bin/python -m experiments.gurobi_exact \
   --N 22 \
   --L 5 \
   --active-frac 0.5 \
@@ -123,12 +123,12 @@ Generated files are under `results/gurobi_small_N22_L5_3obj_10samples/`.
 
 ## Sigma Sweep Without Gurobi
 
-For larger non-exact experiments, use `sigma_sweep_analysis.py`. It compares all
+For larger non-exact experiments, use `venv/bin/python -m experiments.sigma_variation`. It compares all
 non-Gurobi algorithms. The current percent-based run uses `--K-pcts`, so `25`
 means `K=round(0.25*N)`, not absolute `K=25`.
 
 ```bash
-venv/bin/python sigma_sweep_analysis.py \
+venv/bin/python -m experiments.sigma_variation \
   --N 1000 \
   --L 4 \
   --K-pcts 25 50 \

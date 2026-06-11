@@ -3,9 +3,7 @@ import sys
 import unittest
 
 import numpy as np
-from numpy.random import normal
 
-from benchmark_algorithms import MOTOR_SOLVERS
 from algorithms import (
     calculate_objectives,
     check_constraints,
@@ -20,43 +18,20 @@ from algorithms import (
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
 )
-
-
-# ==========================================
-# 1. Input Data Generation
-# ==========================================
-
-def generate_V(N, L):
-    """
-    Generate the initial channel matrix V.
-    (Copied exactly as requested from the Appendix)
-    """
-
-    V = normal(size=(N, L)) + 1j * normal(size=(N, L))
-    column_norms = np.linalg.norm(V, axis=0)
-    V /= column_norms
-    antenna_max = np.max(np.linalg.norm(V, axis=1))
-    V /= antenna_max
-    return V
+from utils.solver_sets import MOTOR_SOLVERS
+from utils.data import generate_V
+from utils.evaluation import evaluate_algorithms as evaluate_solver_set
 
 
 def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
-    results = {}
-
-    with np.errstate(all="ignore"):
-        for name, solver in MOTOR_SOLVERS:
-            x = solver(V, K, sigma, P, random_state)
-            valid, active_count = check_constraints(x, K)
-            u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
-            results[name] = {
-                "valid": bool(valid),
-                "active_count": int(active_count),
-                "u_bf": float(u_bf),
-                "u_i": float(u_i),
-                "u_g": float(u_g),
-            }
-
-    return results
+    return evaluate_solver_set(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+        solvers=MOTOR_SOLVERS,
+    )
 
 
 # ==========================================

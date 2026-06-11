@@ -1,16 +1,6 @@
 import argparse
-import os
-import time
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path(".matplotlib-cache").resolve()))
-os.environ.setdefault("XDG_CACHE_HOME", str(Path(".cache").resolve()))
-
-import matplotlib
-
-matplotlib.use("Agg")
-
-import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
@@ -19,45 +9,16 @@ try:
 except ImportError:
     tqdm = None
 
-from algorithms import (
-    calculate_objectives,
-    check_constraints,
-)
-from benchmark_algorithms import CDF_SOLVERS
+from utils.solver_sets import CDF_SOLVERS
+from utils.data import generate_v_from_rng
+from utils.evaluation import evaluate_solver
+from utils.io import atomic_write_csv
+from utils.reporting import format_number_slug
+from visualization.algorithm_comparison import write_algorithm_comparison_plots
 
-
-DEFAULT_ALGORITHMS = (
-    "H1",
-    "H2",
-    "H3",
-    "FrameOnly-Gen",
-    "CapWindow-Gen",
-    "S-threshold-Gen",
-    "Coutino",
-)
 
 OUR_ALGORITHMS = ("FrameOnly-Gen", "CapWindow-Gen", "S-threshold-Gen", "Coutino")
 FOCUSED_H3_CAP_WINDOW = ("H3", "FrameOnly-Gen", "CapWindow-Gen")
-
-ALGORITHM_COLORS = {
-    "H1": "#0072B2",
-    "H2": "#D55E00",
-    "H3": "#009E73",
-    "FrameOnly-Gen": "#6A3D9A",
-    "CapWindow-Gen": "#1F78B4",
-    "Frame-Gen": "#CC79A7",
-    "S-threshold-Gen": "#E69F00",
-    "Coutino": "#000000",
-}
-
-
-def generate_v_from_rng(rng, N, L):
-    V = rng.normal(size=(N, L)) + 1j * rng.normal(size=(N, L))
-    column_norms = np.linalg.norm(V, axis=0)
-    V /= column_norms
-    antenna_max = np.max(np.linalg.norm(V, axis=1))
-    V /= antenna_max
-    return V
 
 
 def parse_args():
@@ -102,12 +63,7 @@ def parse_args():
         "--algorithms",
         nargs="+",
         default=None,
-        help="Optional subset of algorithm names. Default: H1 H2 H3 plus three best distinct families.",
-    )
-    parser.add_argument(
-        "--all-algorithms",
-        action="store_true",
-        help="Run and plot every algorithm instead of the compact default subset.",
+        help="Optional subset of algorithm names. Default: every registered comparison algorithm.",
     )
     parser.add_argument(
         "--checkpoint-every",
@@ -139,7 +95,7 @@ def default_out_dir(args):
     if args.off_counts is not None:
         off_label = "count" + "_".join(str(value) for value in args.off_counts)
     else:
-        off_label = "_".join(format_number(value) for value in args.off_pcts)
+        off_label = "_".join(format_number_slug(value) for value in args.off_pcts)
     seed_label = "_".join(str(value) for value in args.generator_seeds)
     return Path(
         f"results/cdf_N{args.N}_L{args.L}_off{off_label}_"
@@ -170,19 +126,6 @@ def build_off_cases(args):
     return cases
 
 
-def format_number(value):
-    if float(value).is_integer():
-        return str(int(value))
-    return str(value).replace(".", "p")
-
-
-def atomic_write_csv(df, path):
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp_path = path.with_name(path.name + ".tmp")
-    df.to_csv(tmp_path, index=False)
-    os.replace(tmp_path, path)
-
-
 def load_existing_runs(path):
     if not path.exists():
         return pd.DataFrame(), set()
@@ -200,10 +143,10 @@ def load_existing_runs(path):
 
 
 def select_algorithms(all_algorithms, args):
-    if args.all_algorithms:
+    if args.algorithms is None:
         return all_algorithms
 
-    selected_names = args.algorithms or DEFAULT_ALGORITHMS
+    selected_names = args.algorithms
     available = {name for name, _ in all_algorithms}
     unknown = sorted(set(selected_names) - available)
     if unknown:
@@ -226,25 +169,24 @@ def solver_random_state(generator_seed, sample, K, algorithm_index):
 
 
 def run_algorithm(name, solver, V, K, off_pct, args, random_state):
-    started_at = time.perf_counter()
-    with np.errstate(all="ignore"):
-        x = solver(V, K, args.sigma, args.P, random_state)
-        elapsed_seconds = time.perf_counter() - started_at
-        valid, active_count = check_constraints(x, K)
-        u_bf, u_i, u_g = calculate_objectives(V, x, sigma=args.sigma, P=args.P)
-
-    if not valid or not np.isfinite([u_bf, u_i, u_g]).all():
-        raise RuntimeError(f"Invalid result for {name}, off_pct={off_pct}, K={K}.")
-
-    u_g_safe = max(float(u_g), np.finfo(float).tiny)
+    _, result = evaluate_solver(
+        name,
+        solver,
+        V,
+        K,
+        args.sigma,
+        args.P,
+        random_state,
+    )
+    u_g_safe = max(result["u_g"], np.finfo(float).tiny)
     return {
         "algorithm": name,
-        "active_count": int(active_count),
-        "u_bf": float(u_bf),
-        "u_i": float(u_i),
-        "u_g": float(u_g),
+        "active_count": result["active_count"],
+        "u_bf": result["u_bf"],
+        "u_i": result["u_i"],
+        "u_g": result["u_g"],
         "u_g_db": float(10.0 * np.log10(u_g_safe)),
-        "elapsed_seconds": float(elapsed_seconds),
+        "elapsed_seconds": result["elapsed_seconds"],
     }
 
 
@@ -604,82 +546,6 @@ def write_our_vs_h123_report(
     )
 
 
-def empirical_cdf(values):
-    values = np.asarray(values, dtype=float)
-    values = values[np.isfinite(values)]
-    if len(values) == 0:
-        return values, values
-    values = np.sort(values)
-    probs = np.arange(1, len(values) + 1, dtype=float) / len(values)
-    return np.r_[values[0], values], np.r_[0.0, probs]
-
-
-def plot_cdf(runs, algorithms, value_col, ylabel, title, out_path, log_y=False):
-    off_pcts = sorted(runs["off_pct"].unique())
-    generator_seeds = sorted(runs["generator_seed"].unique())
-    fig, axes = plt.subplots(
-        len(generator_seeds),
-        len(off_pcts),
-        figsize=(7.0 * len(off_pcts), 4.3 * len(generator_seeds)),
-        sharey=True,
-        squeeze=False,
-    )
-    color_map = plt.get_cmap("tab20")
-    colors = {
-        name: ALGORITHM_COLORS.get(name, color_map(index % color_map.N))
-        for index, (name, _) in enumerate(algorithms)
-    }
-
-    handles = []
-    labels = []
-    for row, generator_seed in enumerate(generator_seeds):
-        for col, off_pct in enumerate(off_pcts):
-            ax = axes[row, col]
-            data = runs[
-                (runs["generator_seed"] == generator_seed)
-                & (runs["off_pct"] == off_pct)
-            ]
-            if data.empty:
-                ax.set_visible(False)
-                continue
-
-            K = int(data["K"].iloc[0])
-            for name, _ in algorithms:
-                values = data[data["algorithm"] == name][value_col]
-                x_values, y_values = empirical_cdf(values)
-                if len(x_values) == 0:
-                    continue
-                line = ax.step(
-                    y_values,
-                    x_values,
-                    where="post",
-                    linewidth=1.8,
-                    color=colors[name],
-                    marker=".",
-                    markersize=2.0,
-                    label=name,
-                )[0]
-                if row == 0 and col == 0:
-                    handles.append(line)
-                    labels.append(name)
-
-            ax.set_title(f"seed={int(generator_seed)}, {off_pct:g}% off, K={K}")
-            ax.set_xlabel("Cumulative fraction of examples")
-            if col == 0:
-                ax.set_ylabel(ylabel)
-            ax.set_xlim(0.0, 1.02)
-            ax.grid(True, alpha=0.25)
-            if log_y:
-                ax.set_yscale("log")
-
-    fig.suptitle(title)
-    fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.995, 0.5), fontsize=8)
-    fig.tight_layout(rect=(0.0, 0.0, 0.84, 0.93))
-    out_path.parent.mkdir(parents=True, exist_ok=True)
-    fig.savefig(out_path, dpi=180, bbox_inches="tight")
-    plt.close(fig)
-
-
 def write_outputs(runs, algorithms, out_dir):
     selected = {name for name, _ in algorithms}
     runs = runs[runs["algorithm"].isin(selected)].copy()
@@ -694,46 +560,12 @@ def write_outputs(runs, algorithms, out_dir):
         atomic_write_csv(improvement, out_dir / "cdf_baseline_improvement.csv")
         write_improvement_report(improvement, out_dir / "cdf_baseline_improvement.md")
         write_our_vs_h123_report(improvement, out_dir)
-    plot_cdf(
+    write_algorithm_comparison_plots(
         runs,
         algorithms,
-        "u_g_db",
-        "10 lg(U_G), dB",
-        "Cumulative distribution of general objective U_G",
-        out_dir / "cdf_u_g_db.png",
+        out_dir,
+        focused_names=FOCUSED_H3_CAP_WINDOW,
     )
-    plot_cdf(
-        runs,
-        algorithms,
-        "elapsed_seconds",
-        "Elapsed time, seconds",
-        "Cumulative distribution of solver runtime",
-        out_dir / "cdf_runtime_seconds.png",
-        log_y=True,
-    )
-    if set(FOCUSED_H3_CAP_WINDOW).issubset(selected):
-        focused_algorithms = tuple(
-            (name, solver)
-            for name, solver in algorithms
-            if name in FOCUSED_H3_CAP_WINDOW
-        )
-        plot_cdf(
-            runs,
-            focused_algorithms,
-            "u_g_db",
-            "10 lg(U_G), dB",
-            "Focused cumulative distribution: H3 vs FrameOnly-Gen vs CapWindow-Gen",
-            out_dir / "cdf_u_g_db_h3_frameonly_capwindow.png",
-        )
-        plot_cdf(
-            runs,
-            focused_algorithms,
-            "elapsed_seconds",
-            "Elapsed time, seconds",
-            "Focused solver runtime: H3 vs FrameOnly-Gen vs CapWindow-Gen",
-            out_dir / "cdf_runtime_seconds_h3_frameonly_capwindow.png",
-            log_y=True,
-        )
 
 
 def main():

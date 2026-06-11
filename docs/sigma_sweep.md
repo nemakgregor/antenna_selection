@@ -3,7 +3,7 @@
 Use `--K-pcts` when `K` is an active antenna percentage:
 
 ```bash
-venv/bin/python sigma_sweep_analysis.py \
+venv/bin/python -m experiments.sigma_variation \
   --N 1000 --L 4 \
   --K-pcts 25 50 \
   --samples 30 \
@@ -22,7 +22,7 @@ That matches the benchmark convention where `25` means 25 percent disabled, so
 Power-of-ten sigma repeat for 10 samples with 25 and 50 percent disabled:
 
 ```bash
-venv/bin/python sigma_sweep_analysis.py \
+venv/bin/python -m experiments.sigma_variation \
   --N 1000 --L 4 \
   --off-pcts 25 50 \
   --samples 10 \
@@ -41,7 +41,7 @@ be refreshed periodically with `--plot-every`. To rebuild report/plots from an
 existing run without recomputing algorithms, use:
 
 ```bash
-venv/bin/python sigma_sweep_analysis.py \
+venv/bin/python -m experiments.sigma_variation \
   --N 1000 --L 4 \
   --K-pcts 25 50 \
   --samples 30 \

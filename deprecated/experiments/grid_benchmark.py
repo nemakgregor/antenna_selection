@@ -1,25 +1,16 @@
 import argparse
-import os
-import time
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path(".matplotlib-cache").resolve()))
-os.environ.setdefault("XDG_CACHE_HOME", str(Path(".cache").resolve()))
+from utils.plotting import use_agg_backend
 
-import matplotlib
-
-matplotlib.use("Agg")
-
+use_agg_backend()
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from algorithms import (
-    calculate_objectives,
-    check_constraints,
-)
-from benchmark_algorithms import GRID_SOLVERS
-from motor_challenge_1205 import generate_V
+from utils.solver_sets import GRID_SOLVERS
+from utils.data import generate_V
+from utils.evaluation import evaluate_solver
 
 
 METRICS = (
@@ -49,28 +40,21 @@ def parse_args():
 
 
 def run_solver(name, solver, V, K, sigma, P):
-    started_at = time.perf_counter()
-    with np.errstate(all="ignore"):
-        x = solver(V, K, sigma, P)
-        elapsed_seconds = time.perf_counter() - started_at
-        valid, active_count = check_constraints(x, K)
-        u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
-        log2_u_g = np.log2(max(u_g, np.finfo(float).tiny))
-
-    if not valid or not np.isfinite([u_bf, u_i, u_g]).all():
-        raise RuntimeError(f"Invalid result for {name}.")
+    _, metrics = evaluate_solver(name, solver, V, K, sigma, P)
+    active_count = metrics["active_count"]
+    log2_u_g = np.log2(max(metrics["u_g"], np.finfo(float).tiny))
 
     return {
         "heuristic": name,
-        "active_count": int(active_count),
-        "u_bf": float(u_bf),
-        "u_i": float(u_i),
-        "u_g": float(u_g),
+        "active_count": active_count,
+        "u_bf": metrics["u_bf"],
+        "u_i": metrics["u_i"],
+        "u_g": metrics["u_g"],
         "log2_u_g_per_active": float(log2_u_g / active_count)
         if active_count
         else 0.0,
-        "u_bf_per_active": float(u_bf / active_count) if active_count else 0.0,
-        "elapsed_seconds": float(elapsed_seconds),
+        "u_bf_per_active": float(metrics["u_bf"] / active_count) if active_count else 0.0,
+        "elapsed_seconds": metrics["elapsed_seconds"],
     }
 
 

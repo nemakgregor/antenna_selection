@@ -1,19 +1,16 @@
 import argparse
-import os
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path(".matplotlib-cache").resolve()))
-os.environ.setdefault("XDG_CACHE_HOME", str(Path(".cache").resolve()))
+from utils.plotting import use_agg_backend
 
-import matplotlib
-
-matplotlib.use("Agg")
-
+use_agg_backend()
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from motor_challenge_1205 import evaluate_algorithms, generate_V
+from utils.solver_sets import MOTOR_SOLVERS
+from utils.data import generate_V
+from utils.evaluation import evaluate_algorithms
 
 
 METRICS = (
@@ -55,6 +52,7 @@ def run_samples(args):
             sigma=args.sigma,
             P=args.P,
             random_state=args.seed + sample_idx,
+            solvers=MOTOR_SOLVERS,
         )
 
         for heuristic, result in sample_results.items():

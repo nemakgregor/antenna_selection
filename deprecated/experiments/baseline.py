@@ -1,25 +1,16 @@
 import argparse
-import os
-import time
 from pathlib import Path
 
-os.environ.setdefault("MPLCONFIGDIR", str(Path(".matplotlib-cache").resolve()))
-os.environ.setdefault("XDG_CACHE_HOME", str(Path(".cache").resolve()))
+from utils.plotting import use_agg_backend
 
-import matplotlib
-
-matplotlib.use("Agg")
-
+use_agg_backend()
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
-from algorithms import (
-    calculate_objectives,
-    check_constraints,
-)
-from benchmark_algorithms import BASELINE_SOLVERS
-from motor_challenge_1205 import generate_V
+from utils.solver_sets import BASELINE_SOLVERS
+from utils.data import generate_V
+from utils.evaluation import evaluate_solver
 
 
 OBJECTIVES = {
@@ -85,20 +76,11 @@ def run_single_case(N, L, active_frac, seed, sigma, P):
 
     rows = []
     for heuristic, solver in HEURISTICS:
-        with np.errstate(all="ignore"):
-            started_at = time.perf_counter()
-            x = solver(V, K, sigma, P)
-            elapsed_seconds = time.perf_counter() - started_at
-            valid, active_count = check_constraints(x, K)
-            u_bf, u_i, u_g = calculate_objectives(V, x, sigma=sigma, P=P)
-        if not np.isfinite([u_bf, u_i, u_g]).all():
-            raise FloatingPointError(
-                f"Non-finite objective for {heuristic}: "
-                f"N={N}, L={L}, K={K}, seed={seed}"
-            )
+        _, result = evaluate_solver(heuristic, solver, V, K, sigma, P)
+        active_count = result["active_count"]
         actual_active_fraction = active_count / N
         actual_turned_off_fraction = 1.0 - actual_active_fraction
-        log2_u_g = np.log2(max(u_g, np.finfo(float).tiny))
+        log2_u_g = np.log2(max(result["u_g"], np.finfo(float).tiny))
         rows.append(
             {
                 "N": N,
@@ -108,17 +90,17 @@ def run_single_case(N, L, active_frac, seed, sigma, P):
                 "required_turned_off_fraction": 1.0 - active_frac,
                 "seed": seed,
                 "heuristic": heuristic,
-                "valid": valid,
+                "valid": result["valid"],
                 "active_count": active_count,
                 "actual_active_fraction": actual_active_fraction,
                 "actual_turned_off_fraction": actual_turned_off_fraction,
-                "u_bf": u_bf,
-                "u_i": u_i,
-                "u_g": u_g,
+                "u_bf": result["u_bf"],
+                "u_i": result["u_i"],
+                "u_g": result["u_g"],
                 "log2_u_g": log2_u_g,
                 "log2_u_g_per_active": log2_u_g / active_count if active_count else 0.0,
-                "u_bf_per_active": u_bf / active_count if active_count else 0.0,
-                "elapsed_seconds": elapsed_seconds,
+                "u_bf_per_active": result["u_bf"] / active_count if active_count else 0.0,
+                "elapsed_seconds": result["elapsed_seconds"],
             }
         )
     return rows
