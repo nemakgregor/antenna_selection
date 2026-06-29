@@ -9,6 +9,8 @@ SIGMA_COLORS = {
     "H1": "#1f77b4",
     "H2": "#ff7f0e",
     "Coutino": "#2ca02c",
+    "BackwardTrueGreedy": "#2ca02c",
+    "CoutinoSchur-Gen": "#7a3e9d",
     "MISO-EE": "#4f6d7a",
     "Pareto-H2": "#9467bd",
     "H3-threshold-BF": "#8c564b",
@@ -18,6 +20,10 @@ SIGMA_COLORS = {
     "Frame-Int": "#b56576",
     "Frame-Gen": "#3366cc",
     "CapWindow-Gen": "#1f78b4",
+    "CapSubmod-Gen": "#007a87",
+    "ThreshDOpt-Gen": "#0099c6",
+    "ThreshWLogdet-Gen": "#6c8e00",
+    "ThreshDOptSwap-Gen": "#d55e00",
     "H3-Fast": "#bcbd22",
 }
 
@@ -25,6 +31,8 @@ SIGMA_MARKERS = {
     "H1": "o",
     "H2": "s",
     "Coutino": "^",
+    "BackwardTrueGreedy": "^",
+    "CoutinoSchur-Gen": "P",
     "MISO-EE": "D",
     "Pareto-H2": "P",
     "H3-threshold-BF": "v",
@@ -34,6 +42,10 @@ SIGMA_MARKERS = {
     "Frame-Int": "<",
     "Frame-Gen": "8",
     "CapWindow-Gen": "d",
+    "CapSubmod-Gen": "H",
+    "ThreshDOpt-Gen": "*",
+    "ThreshWLogdet-Gen": "p",
+    "ThreshDOptSwap-Gen": "X",
     "H3-Fast": "h",
 }
 

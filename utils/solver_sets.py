@@ -1,6 +1,9 @@
 from algorithms import (
+    solve_backward_true_greedy,
+    solve_cap_submodular_gen,
+    solve_cap_submodular_portfolio_gen,
     solve_cap_window_gen,
-    solve_coutino_greedy,
+    solve_coutino_schur_greedy,
     solve_frame_portfolio,
     solve_h1,
     solve_h2,
@@ -9,6 +12,7 @@ from algorithms import (
     solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
+    solve_thresholded_logdet_greedy,
 )
 
 
@@ -36,6 +40,25 @@ EXACT_FRAME_KWARGS = {
     "random_restarts": 20,
 }
 
+FAST_THRESH_LOGDET_KWARGS = {
+    "eps_values": (1e-6, 1e-2),
+    "lambdas": (1.0,),
+    "threshold_scan_size": 5,
+}
+
+WEIGHTED_THRESH_LOGDET_KWARGS = {
+    "eps_values": (1e-6, 1e-2),
+    "lambdas": (0.9, 0.7, 0.5),
+    "threshold_scan_size": 5,
+}
+
+SWAP_THRESH_LOGDET_KWARGS = {
+    "eps_values": (1e-6, 1e-2),
+    "lambdas": (1.0,),
+    "threshold_scan_size": 5,
+    "swap_max_passes": 1,
+}
+
 
 def _h1(V, K, sigma, P, random_state=None):
     return solve_h1(V, K, sigma=sigma, P=P)
@@ -49,8 +72,18 @@ def _h3_strong_weak(V, K, sigma, P, random_state=None):
     return solve_h3_strong_weak(V, K, sigma=sigma, P=P)
 
 
-def _coutino(V, K, sigma, P, random_state=None):
-    return solve_coutino_greedy(V, K, sigma=sigma, P=P)
+def _backward_true_greedy(V, K, sigma, P, random_state=None):
+    return solve_backward_true_greedy(V, K, sigma=sigma, P=P)
+
+
+def _coutino_schur(V, K, sigma, P, random_state=None):
+    return solve_coutino_schur_greedy(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+    )
 
 
 def _miso_energy(V, K, sigma, P, random_state=None):
@@ -87,6 +120,40 @@ def _frame_solver(target_obj, frame_kwargs, external_starts=True, fixed_random_s
 
 def _cap_window(V, K, sigma, P, random_state=None):
     return solve_cap_window_gen(V, K, sigma=sigma, P=P, random_state=random_state)
+
+
+def _cap_submodular(V, K, sigma, P, random_state=None):
+    return solve_cap_submodular_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+    )
+
+
+def _cap_submodular_portfolio(V, K, sigma, P, random_state=None):
+    return solve_cap_submodular_portfolio_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+    )
+
+
+def _thresholded_logdet_solver(solver_kwargs):
+    def solver(V, K, sigma, P, random_state=None):
+        return solve_thresholded_logdet_greedy(
+            V,
+            K,
+            sigma=sigma,
+            P=P,
+            random_state=random_state,
+            **solver_kwargs,
+        )
+
+    return solver
 
 
 def _h3_fast(fixed_random_state=None):
@@ -145,10 +212,29 @@ def _frame_only_specs(frame_kwargs, fixed_random_state=None):
     )
 
 
+def _submodular_general_specs(include_swap=True):
+    specs = [
+        ("ThreshDOpt-Gen", _thresholded_logdet_solver(FAST_THRESH_LOGDET_KWARGS)),
+        (
+            "ThreshWLogdet-Gen",
+            _thresholded_logdet_solver(WEIGHTED_THRESH_LOGDET_KWARGS),
+        ),
+    ]
+    if include_swap:
+        specs.append(
+            (
+                "ThreshDOptSwap-Gen",
+                _thresholded_logdet_solver(SWAP_THRESH_LOGDET_KWARGS),
+            )
+        )
+    return tuple(specs)
+
+
 BASELINE_SOLVERS = (
     ("H1", _h1),
     ("H2", _h2),
-    ("Coutino", _coutino),
+    ("BackwardTrueGreedy", _backward_true_greedy),
+    ("CoutinoSchur-Gen", _coutino_schur),
     ("MISO-EE", _miso_energy),
     ("Pareto-H2", _pareto_h2),
 )
@@ -159,14 +245,24 @@ GRID_SOLVERS = (
     *_frame_specs(FAST_FRAME_KWARGS),
     *_frame_only_specs(FAST_FRAME_KWARGS),
     ("CapWindow-Gen", _cap_window),
+    ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmodPort-Gen", _cap_submodular_portfolio),
+    *_submodular_general_specs(),
     ("N-H3-Fast", _h3_fast()),
 )
 
 SIGMA_SWEEP_SOLVERS = (
-    *BASELINE_SOLVERS,
+    ("H1", _h1),
+    ("H2", _h2),
+    ("BackwardTrueGreedy", _backward_true_greedy),
+    ("MISO-EE", _miso_energy),
+    ("Pareto-H2", _pareto_h2),
     *_threshold_specs("H3-threshold"),
     *_frame_specs(FAST_FRAME_KWARGS),
     ("CapWindow-Gen", _cap_window),
+    ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmodPort-Gen", _cap_submodular_portfolio),
+    *_submodular_general_specs(include_swap=False),
     ("H3-Fast", _h3_fast()),
 )
 
@@ -174,13 +270,17 @@ CDF_SOLVERS = (
     ("H1", _h1),
     ("H2", _h2),
     ("H3", _h3_strong_weak),
-    ("Coutino", _coutino),
+    ("BackwardTrueGreedy", _backward_true_greedy),
+    ("CoutinoSchur-Gen", _coutino_schur),
     ("MISO-EE", _miso_energy),
     ("Pareto-H2", _pareto_h2),
     *_threshold_specs("S-threshold"),
     *_frame_specs(FAST_FRAME_KWARGS),
     *_frame_only_specs(FAST_FRAME_KWARGS),
     ("CapWindow-Gen", _cap_window),
+    ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmodPort-Gen", _cap_submodular_portfolio),
+    *_submodular_general_specs(),
     ("N-H3-Fast", _h3_fast()),
 )
 
@@ -192,7 +292,11 @@ MOTOR_SOLVERS = (
     *_threshold_specs("H3"),
     *_frame_specs(TEST_FRAME_KWARGS),
     ("CapWindow-Gen", _cap_window),
-    ("Coutino", _coutino),
+    ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmodPort-Gen", _cap_submodular_portfolio),
+    *_submodular_general_specs(),
+    ("BackwardTrueGreedy", _backward_true_greedy),
+    ("CoutinoSchur-Gen", _coutino_schur),
     ("MISO-EE", _miso_energy),
     ("Pareto-H2", _pareto_h2),
 )
@@ -202,5 +306,8 @@ SMALL_GUROBI_HEURISTICS = (
     *_threshold_specs("H3-threshold"),
     *_frame_specs(EXACT_FRAME_KWARGS, fixed_random_state=0),
     ("CapWindow-Gen", _cap_window),
+    ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmodPort-Gen", _cap_submodular_portfolio),
+    *_submodular_general_specs(),
     ("H3-Fast", _h3_fast(fixed_random_state=0)),
 )

@@ -13,7 +13,14 @@ ALGORITHM_COLORS = {
     "CapWindow-Gen": "#1F78B4",
     "Frame-Gen": "#CC79A7",
     "S-threshold-Gen": "#E69F00",
+    "CapSubmod-Gen": "#007A87",
+    "CapSubmodPort-Gen": "#117733",
     "Coutino": "#000000",
+    "BackwardTrueGreedy": "#000000",
+    "CoutinoSchur-Gen": "#7A3E9D",
+    "ThreshDOpt-Gen": "#0099C6",
+    "ThreshWLogdet-Gen": "#6C8E00",
+    "ThreshDOptSwap-Gen": "#D55E00",
 }
 
 
@@ -123,15 +130,15 @@ def write_algorithm_comparison_plots(runs, algorithms, out_dir, focused_names):
             focused_algorithms,
             "u_g_db",
             "10 lg(U_G), dB",
-            "Focused cumulative distribution: H3 vs FrameOnly-Gen vs CapWindow-Gen",
-            out_dir / "cdf_u_g_db_h3_frameonly_capwindow.png",
+            "Focused cumulative distribution: H3 vs cap-aware submodular candidates",
+            out_dir / "cdf_u_g_db_h3_submodular_gen.png",
         )
         plot_cdf(
             runs,
             focused_algorithms,
             "elapsed_seconds",
             "Elapsed time, seconds",
-            "Focused solver runtime: H3 vs FrameOnly-Gen vs CapWindow-Gen",
-            out_dir / "cdf_runtime_seconds_h3_frameonly_capwindow.png",
+            "Focused solver runtime: H3 vs cap-aware submodular candidates",
+            out_dir / "cdf_runtime_seconds_h3_submodular_gen.png",
             log_y=True,
         )

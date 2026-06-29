@@ -17,8 +17,27 @@ from utils.reporting import format_number_slug
 from visualization.algorithm_comparison import write_algorithm_comparison_plots
 
 
-OUR_ALGORITHMS = ("FrameOnly-Gen", "CapWindow-Gen", "S-threshold-Gen", "Coutino")
-FOCUSED_H3_CAP_WINDOW = ("H3", "FrameOnly-Gen", "CapWindow-Gen")
+OUR_ALGORITHMS = (
+    "FrameOnly-Gen",
+    "CapWindow-Gen",
+    "CapSubmod-Gen",
+    "CapSubmodPort-Gen",
+    "ThreshDOpt-Gen",
+    "ThreshWLogdet-Gen",
+    "ThreshDOptSwap-Gen",
+    "S-threshold-Gen",
+    "BackwardTrueGreedy",
+)
+FOCUSED_H3_CAP_WINDOW = (
+    "H3",
+    "FrameOnly-Gen",
+    "CapWindow-Gen",
+    "CapSubmod-Gen",
+    "CapSubmodPort-Gen",
+    "ThreshDOpt-Gen",
+    "ThreshWLogdet-Gen",
+    "ThreshDOptSwap-Gen",
+)
 
 
 def parse_args():
@@ -594,8 +613,8 @@ def main():
         "cdf_our_vs_h123.md",
         "cdf_u_g_db.png",
         "cdf_runtime_seconds.png",
-        "cdf_u_g_db_h3_frameonly_capwindow.png",
-        "cdf_runtime_seconds_h3_frameonly_capwindow.png",
+        "cdf_u_g_db_h3_submodular_gen.png",
+        "cdf_runtime_seconds_h3_submodular_gen.png",
     ):
         output_path = args.out_dir / output_name
         if output_path.exists():
