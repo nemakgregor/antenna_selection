@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-lognormal,5000,2,1250,75.0,25.0,100,102,125.0,161.5,187.5,212.75,272.0,290,189.72,42.86909366804006,51.25,0.22595980217183248,0.037944000000000006,0.15177600000000002
-lognormal,5000,2,2500,50.0,50.0,100,102,181.75,222.5,261.5,294.25,358.45,396,262.02,56.95168606331638,71.75,0.21735625548933815,0.052404,0.104808

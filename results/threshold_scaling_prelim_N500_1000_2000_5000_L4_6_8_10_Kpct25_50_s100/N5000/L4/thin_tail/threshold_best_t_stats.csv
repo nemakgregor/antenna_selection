@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-thin_tail,5000,4,1250,75.0,25.0,100,109,147.8,194.5,220.0,263.0,321.2,382,228.6,53.74387444541043,68.5,0.23510006319077179,0.04572000000000001,0.18288000000000004
-thin_tail,5000,4,2500,50.0,50.0,100,196,227.65,279.0,330.0,372.75,440.9,507,329.71,67.45642738805249,93.75,0.20459321036077915,0.065942,0.131884

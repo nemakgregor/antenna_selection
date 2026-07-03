@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-rayleigh,1000,6,250,75.0,25.0,100,17,25.95,37.0,47.5,59.0,79.05,115,49.32,17.040581390944798,22.0,0.3455105715925547,0.04932,0.19728
-rayleigh,1000,6,500,50.0,50.0,100,23,38.0,51.0,62.5,78.0,102.29999999999998,125,65.4,19.974731512335755,27.0,0.30542402924060785,0.06540000000000001,0.13080000000000003

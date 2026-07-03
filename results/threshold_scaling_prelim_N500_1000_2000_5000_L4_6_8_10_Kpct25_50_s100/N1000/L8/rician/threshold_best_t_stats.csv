@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-rician,1000,8,250,75.0,25.0,100,23,48.95,113.5,164.0,215.0,245.05,250,157.93,62.26016691142406,101.5,0.3942263465549551,0.15793000000000001,0.6317200000000001
-rician,1000,8,500,50.0,50.0,100,69,103.85,136.5,161.0,210.0,259.15,302,172.2,50.177462847156576,73.5,0.2913906088685051,0.1722,0.3444

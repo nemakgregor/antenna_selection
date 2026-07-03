@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-nakagami,1000,8,250,75.0,25.0,100,13,25.95,34.75,45.5,56.25,78.05,89,47.45,16.391901794619333,21.5,0.3454563075789111,0.04745,0.1898
-nakagami,1000,8,500,50.0,50.0,100,29,41.9,53.75,75.5,88.25,108.39999999999998,123,73.73,21.877000052866737,34.5,0.2967177546842091,0.07372999999999999,0.14745999999999998

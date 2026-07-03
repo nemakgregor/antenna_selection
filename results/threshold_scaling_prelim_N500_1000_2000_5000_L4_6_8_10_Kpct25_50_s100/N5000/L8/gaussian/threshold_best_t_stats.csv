@@ -1,3 +1,0 @@
-data_profile,N,L,K,off_pct,active_pct,cases,best_T_min,best_T_p05,best_T_p25,best_T_median,best_T_p75,best_T_p95,best_T_max,best_T_mean,best_T_std,best_T_iqr,best_T_cv,best_T_over_N_mean,best_T_over_K_mean
-gaussian,5000,8,1250,75.0,25.0,100,88,154.0,203.0,242.0,284.25,330.1,369,242.52,55.454318264147965,81.25,0.228658742636269,0.048504,0.194016
-gaussian,5000,8,2500,50.0,50.0,100,185,229.8,297.0,326.0,382.0,444.05,519,334.89,63.160353086570076,85.0,0.18860029587796015,0.066978,0.133956
