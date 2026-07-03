@@ -1,0 +1,42 @@
+# Threshold Full Sweep: thin_tail
+
+- N: 2000
+- L: 8
+- K values: 500, 1000
+- Samples: 100
+- Generator seeds: 42
+- Sigma: 1.0
+
+The experiment sweeps every integer `T` from `0` to `K` and evaluates raw `U_G`.
+
+## Answer
+
+- `K=500`: best fixed `T=88`; 99% mean-`U_G` diapason `86..92`; best tested `T` median `82.0` (p05..p95 `51.0..132.4`).
+- `K=1000`: best fixed `T=152`; 99% mean-`U_G` diapason `149..155`; best tested `T` median `133.0` (p05..p95 `78.8..191.1`).
+
+## Best Fixed Thresholds And Formula Checks
+
+| K | best fixed T | 99% diapason | best tested T median | best tested T std | best formula | formula T | formula fraction |
+|---:|---:|---|---:|---:|---|---:|---:|
+| 500 | 88 | 86..92 | 82.000 | 27.490 | T_0p05NL_over_Lp2 | 80 | 0.8825 |
+| 1000 | 152 | 149..155 | 133.000 | 34.145 | T_0p075N | 150 | 0.9000 |
+
+## Plots
+
+![U_G vs T](threshold_u_g_by_T.png)
+
+![Best T histogram](threshold_best_T_hist.png)
+
+![Best T boxplot](threshold_best_T_boxplot.png)
+
+![Raw U_G CDF](threshold_raw_u_g_cdf.png)
+
+![Fraction of best tested U_G CDF](threshold_fraction_best_cdf.png)
+
+## Artifacts
+
+- `threshold_runs.csv.gz`
+- `best_thresholds.csv`
+- `threshold_summary.csv`
+- `threshold_best_t_stats.csv`
+- `threshold_formula_comparison.csv`

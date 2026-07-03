@@ -5,7 +5,8 @@ import os
 def atomic_write_csv(frame, path):
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_name(path.name + ".tmp")
-    frame.to_csv(tmp_path, index=False)
+    compression = "gzip" if path.suffix == ".gz" else None
+    frame.to_csv(tmp_path, index=False, compression=compression)
     os.replace(tmp_path, path)
 
 

@@ -142,3 +142,101 @@ def write_algorithm_comparison_plots(runs, algorithms, out_dir, focused_names):
             out_dir / "cdf_runtime_seconds_h3_submodular_gen.png",
             log_y=True,
         )
+
+
+def write_threshold_exploration_plots(runs, out_dir, top_n=8):
+    plot_threshold_cdf_grid(
+        runs,
+        "u_g",
+        "U_G",
+        "Threshold exploration: raw general objective",
+        out_dir / "threshold_cdf_u_g.png",
+        top_n=top_n,
+    )
+    plot_threshold_cdf_grid(
+        runs,
+        "u_g_db",
+        "10 lg(U_G), dB",
+        "Threshold exploration: general objective in dB",
+        out_dir / "threshold_cdf_u_g_db.png",
+        top_n=top_n,
+    )
+    plot_threshold_cdf_grid(
+        runs,
+        "u_g_vs_best_T",
+        "U_G(T) / best_T U_G",
+        "Threshold exploration: normalized objective gap",
+        out_dir / "threshold_cdf_u_g_vs_best.png",
+        top_n=top_n,
+    )
+
+
+def plot_threshold_cdf_grid(runs, value_col, ylabel, title, out_path, top_n=8):
+    profiles = sorted(runs["data_profile"].unique())
+    off_pcts = sorted(runs["off_pct"].unique())
+    fig, axes = plt.subplots(
+        len(profiles),
+        len(off_pcts),
+        figsize=(6.4 * len(off_pcts), 3.9 * len(profiles)),
+        sharey=value_col == "u_g_vs_best_T",
+        squeeze=False,
+    )
+    color_map = plt.get_cmap("tab20")
+    handles = []
+    labels = []
+
+    for row, profile in enumerate(profiles):
+        for col, off_pct in enumerate(off_pcts):
+            ax = axes[row, col]
+            data = runs[
+                (runs["data_profile"] == profile)
+                & (runs["off_pct"] == off_pct)
+            ]
+            if data.empty:
+                ax.set_visible(False)
+                continue
+
+            K = int(data["K"].iloc[0])
+            top_thresholds = (
+                data.groupby("T")["u_g_vs_best_T"]
+                .mean()
+                .sort_values(ascending=False)
+                .head(top_n)
+                .index.tolist()
+            )
+            if 0 in set(data["T"]):
+                top_thresholds = [0, *[T for T in top_thresholds if T != 0]]
+                top_thresholds = top_thresholds[:top_n]
+
+            for index, T in enumerate(top_thresholds):
+                values = data[data["T"] == T][value_col]
+                x_values, y_values = empirical_cdf(values)
+                if len(x_values) == 0:
+                    continue
+                label = f"T={int(T)}"
+                line = ax.step(
+                    y_values,
+                    x_values,
+                    where="post",
+                    linewidth=1.6,
+                    color=color_map(index % color_map.N),
+                    label=label,
+                )[0]
+                if row == 0 and col == 0:
+                    handles.append(line)
+                    labels.append(label)
+
+            ax.set_title(f"{profile}, {off_pct:g}% off, K={K}")
+            ax.set_xlabel("Cumulative fraction of examples")
+            if col == 0:
+                ax.set_ylabel(ylabel)
+            ax.set_xlim(0.0, 1.02)
+            ax.grid(True, alpha=0.25)
+
+    fig.suptitle(title)
+    if handles:
+        fig.legend(handles, labels, loc="center left", bbox_to_anchor=(0.995, 0.5), fontsize=8)
+    fig.tight_layout(rect=(0.0, 0.0, 0.84, 0.94))
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out_path, dpi=180, bbox_inches="tight")
+    plt.close(fig)
