@@ -1,5 +1,7 @@
 # Exact Study: K-Percentage Dependence
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 This report compares exact best, best tested threshold, `T=0.05N`, and strong/weak H3 across requested active K percentages.
 For small `N`, different requested percentages can round to the same integer `K`; the tables include the mean actual `100*K/N` percentage.
 

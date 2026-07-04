@@ -1,5 +1,7 @@
 # Small Gurobi Benchmark
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 This repository uses `venv/bin/python -m experiments.gurobi_exact` for exact small-case comparisons.
 The script enumerates feasible subsets, asks Gurobi to select the exact optimum
 for the requested objective, verifies the answer with a direct scan, then compares

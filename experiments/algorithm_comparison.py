@@ -29,6 +29,14 @@ from utils.brute_force import (
 )
 from utils.io import atomic_write_csv
 from utils.local_threshold_analysis import run_local_threshold_exact_analysis
+from utils.local_threshold_real_off_analysis import (
+    run_active_k_cyclic_local_exact_analysis,
+    run_real_off_cyclic_local_exact_analysis,
+)
+from utils.local_threshold_large_analysis import (
+    run_large_cyclic_honest_local_analysis,
+    run_large_cyclic_local_analysis,
+)
 from utils.reporting import format_number_slug
 from utils.threshold_exact_analysis import write_threshold_exact_k_analysis
 from visualization.algorithm_comparison import (
@@ -39,6 +47,26 @@ from visualization.algorithm_comparison import (
 
 OUR_ALGORITHMS = ("FrameOnly-Gen", "CapWindow-Gen", "S-threshold-Gen", "Coutino")
 FOCUSED_H3_CAP_WINDOW = ("H3", "FrameOnly-Gen", "CapWindow-Gen")
+
+HISTORICAL_ACTIVE_K_NOTE = (
+    "> Historical K semantics note: this report uses active-K semantics. "
+    "Here `K` is the number of selected/kept antennas, not the number turned off. "
+    "A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. "
+    "For real off-percent experiments, `25% off => K_active=0.75N` and "
+    "`50% off => K_active=0.50N`."
+)
+
+REAL_OFF_K_NOTE = (
+    "> K semantics note: `off_pct` is the percent of antennas turned off. "
+    "`K_off = round(N * off_pct / 100)`, `K_active = N - K_off`, and the solver "
+    "variable `K` equals `K_active`."
+)
+
+
+def k_semantics_note_for_cases(args):
+    if getattr(args, "K_values", None) is not None:
+        return HISTORICAL_ACTIVE_K_NOTE
+    return REAL_OFF_K_NOTE
 
 
 def parse_args():
@@ -157,6 +185,38 @@ def parse_args():
         ),
     )
     parser.add_argument(
+        "--threshold-real-off-cyclic-local-exact-analysis",
+        action="store_true",
+        help=(
+            "Run real off-percent exact analysis comparing cyclic threshold, "
+            "T=0.05N, and strong/weak seeds with 0/1/2 local swaps."
+        ),
+    )
+    parser.add_argument(
+        "--threshold-active-k-cyclic-local-exact-analysis",
+        action="store_true",
+        help=(
+            "Run active-K exact analysis comparing cyclic threshold, T=0.05N, "
+            "and strong/weak seeds with 0/1/2 local swaps."
+        ),
+    )
+    parser.add_argument(
+        "--threshold-large-cyclic-local-analysis",
+        action="store_true",
+        help=(
+            "Run large-N non-exact analysis comparing cyclic threshold, T=0.05N, "
+            "and strong/weak seeds with 0/1/2 local swaps."
+        ),
+    )
+    parser.add_argument(
+        "--threshold-large-cyclic-honest-local-analysis",
+        action="store_true",
+        help=(
+            "Run large-N non-exact analysis with honest all-inactive one-swap "
+            "local search for cyclic threshold, T=0.05N, and strong/weak seeds."
+        ),
+    )
+    parser.add_argument(
         "--exact-source-dir",
         type=Path,
         default=Path(
@@ -211,6 +271,18 @@ def parse_args():
 
 
 def default_out_dir(args):
+    if args.threshold_active_k_cyclic_local_exact_analysis:
+        return Path(
+            "results/local_threshold_exact_gauss_L2_N8_12_16_20_24_"
+            "activeKpct25_to_75_cyclic_s100"
+        )
+
+    if args.threshold_real_off_cyclic_local_exact_analysis:
+        return Path(
+            "results/local_threshold_exact_gauss_L2_N8_12_16_20_24_"
+            "offpct25_50_cyclic_s100"
+        )
+
     if args.threshold_local_exact_analysis:
         return Path("results/local_threshold_exact_gauss_L2_N8_12_16_20_Kpct25_to_50_s100")
 
@@ -1601,6 +1673,8 @@ def write_full_sweep_profile_report(
     lines = [
         f"# Threshold Full Sweep: {profile}",
         "",
+        k_semantics_note_for_cases(args),
+        "",
         f"- N: {args.N}",
         f"- L: {args.L}",
         f"- K values: {', '.join(str(case['K']) for case in args.off_cases)}",
@@ -1695,6 +1769,8 @@ def write_full_sweep_combined_report(all_distribution, all_stats, all_formula, o
 
     lines = [
         "# Threshold Full Sweep: All Distributions",
+        "",
+        k_semantics_note_for_cases(args),
         "",
         f"- N: {args.N}",
         f"- L: {args.L}",
@@ -2729,6 +2805,8 @@ def write_threshold_scaling_report(
     lines = [
         "# Preliminary Threshold Scaling Study",
         "",
+        HISTORICAL_ACTIVE_K_NOTE,
+        "",
         f"- N values: {', '.join(str(value) for value in report_N_values)}",
         f"- L values: {', '.join(str(value) for value in report_L_values)}",
         f"- Active K percentages: {', '.join(format_float(value, precision=1) for value in report_active_pcts)}",
@@ -3587,6 +3665,8 @@ def write_threshold_exact_report(exact_runs, summary, formula_summary, out_dir, 
     lines = [
         "# Exact Threshold Approach Study",
         "",
+        HISTORICAL_ACTIVE_K_NOTE,
+        "",
         f"- N values: {', '.join(str(value) for value in args.N_values)}",
         f"- L: {args.L}",
         f"- Active K percentages: {', '.join(format_float(value) for value in args.K_pcts)}",
@@ -4057,6 +4137,210 @@ def main():
     args.out_dir = args.out_dir or default_out_dir(args)
     args.out_dir.mkdir(parents=True, exist_ok=True)
 
+    if args.threshold_large_cyclic_honest_local_analysis:
+        if (
+            args.threshold_exact_study
+            or args.threshold_scaling_study
+            or args.threshold_full_sweep
+            or args.threshold_explore
+            or args.threshold_rule_cdf
+            or args.threshold_local_exact_analysis
+            or args.threshold_real_off_cyclic_local_exact_analysis
+            or args.threshold_active_k_cyclic_local_exact_analysis
+            or args.threshold_large_cyclic_local_analysis
+        ):
+            raise ValueError(
+                "Use --threshold-large-cyclic-honest-local-analysis by itself, "
+                "not with other threshold modes."
+            )
+        if args.K_values is None:
+            raise ValueError(
+                "--threshold-large-cyclic-honest-local-analysis requires explicit "
+                "active antenna counts via --K-values."
+            )
+        run_large_cyclic_honest_local_analysis(
+            out_dir=args.out_dir,
+            N=args.N,
+            K_values=args.K_values,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            docs_path=Path("docs/local_threshold_large_honest_cyclic_report.md"),
+        )
+        print("Wrote:", flush=True)
+        for output_name in (
+            "csv_data.tar.gz",
+            "local_threshold_large_honest_report.md",
+            "large_raw_u_g_cdf_by_K.png",
+            "large_fraction_cyclic_seed_cdf_by_K.png",
+            "large_fraction_best_observed_cdf_by_K.png",
+            "large_mean_fraction_cyclic_seed_by_K.png",
+            "large_best_cyclic_T_boxplot.png",
+            "large_best_cyclic_T_over_N.png",
+            "large_runtime_by_method.png",
+        ):
+            output_path = args.out_dir / output_name
+            if output_path.exists():
+                print(f"  {output_path}", flush=True)
+        docs_output = Path("docs/local_threshold_large_honest_cyclic_report.md")
+        if docs_output.exists():
+            print(f"  {docs_output}", flush=True)
+        return
+
+    if args.threshold_large_cyclic_local_analysis:
+        if (
+            args.threshold_exact_study
+            or args.threshold_scaling_study
+            or args.threshold_full_sweep
+            or args.threshold_explore
+            or args.threshold_rule_cdf
+            or args.threshold_local_exact_analysis
+            or args.threshold_real_off_cyclic_local_exact_analysis
+            or args.threshold_active_k_cyclic_local_exact_analysis
+            or args.threshold_large_cyclic_honest_local_analysis
+        ):
+            raise ValueError(
+                "Use --threshold-large-cyclic-local-analysis by itself, "
+                "not with other threshold modes."
+            )
+        if args.K_values is None:
+            raise ValueError(
+                "--threshold-large-cyclic-local-analysis requires explicit active "
+                "antenna counts via --K-values."
+            )
+        run_large_cyclic_local_analysis(
+            out_dir=args.out_dir,
+            N=args.N,
+            K_values=args.K_values,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            docs_path=Path("docs/local_threshold_large_cyclic_report.md"),
+        )
+        print("Wrote:", flush=True)
+        for output_name in (
+            "csv_data.tar.gz",
+            "local_threshold_large_report.md",
+            "large_raw_u_g_cdf_by_K.png",
+            "large_fraction_cyclic_seed_cdf_by_K.png",
+            "large_fraction_best_observed_cdf_by_K.png",
+            "large_mean_fraction_cyclic_seed_by_K.png",
+            "large_best_cyclic_T_boxplot.png",
+            "large_best_cyclic_T_over_N.png",
+            "large_runtime_by_method.png",
+        ):
+            output_path = args.out_dir / output_name
+            if output_path.exists():
+                print(f"  {output_path}", flush=True)
+        docs_output = Path("docs/local_threshold_large_cyclic_report.md")
+        if docs_output.exists():
+            print(f"  {docs_output}", flush=True)
+        return
+
+    if args.threshold_active_k_cyclic_local_exact_analysis:
+        if (
+            args.threshold_exact_study
+            or args.threshold_scaling_study
+            or args.threshold_full_sweep
+            or args.threshold_explore
+            or args.threshold_rule_cdf
+            or args.threshold_local_exact_analysis
+            or args.threshold_real_off_cyclic_local_exact_analysis
+            or args.threshold_large_cyclic_local_analysis
+            or args.threshold_large_cyclic_honest_local_analysis
+        ):
+            raise ValueError(
+                "Use --threshold-active-k-cyclic-local-exact-analysis by itself, "
+                "not with other threshold modes."
+            )
+        run_active_k_cyclic_local_exact_analysis(
+            out_dir=args.out_dir,
+            n_values=args.N_values,
+            active_pcts=args.K_pcts,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            exact_source_dir=args.exact_source_dir,
+            exact_time_limit=args.exact_time_limit,
+            docs_path=Path("docs/local_threshold_active_k_cyclic_report.md"),
+        )
+        print("Wrote:", flush=True)
+        for output_name in (
+            "csv_data.tar.gz",
+            "local_threshold_active_k_report.md",
+            "active_k_raw_u_g_cdf_by_requested_active_pct.png",
+            "active_k_fraction_exact_cdf.png",
+            "active_k_mean_fraction_by_requested_active_pct.png",
+            "active_k_exact_recovery_by_requested_active_pct.png",
+            "real_off_failure_diagnostics.png",
+            "active_k_runtime_by_method.png",
+        ):
+            output_path = args.out_dir / output_name
+            if output_path.exists():
+                print(f"  {output_path}", flush=True)
+        docs_output = Path("docs/local_threshold_active_k_cyclic_report.md")
+        if docs_output.exists():
+            print(f"  {docs_output}", flush=True)
+        return
+
+    if args.threshold_real_off_cyclic_local_exact_analysis:
+        if (
+            args.threshold_exact_study
+            or args.threshold_scaling_study
+            or args.threshold_full_sweep
+            or args.threshold_explore
+            or args.threshold_rule_cdf
+            or args.threshold_local_exact_analysis
+            or args.threshold_large_cyclic_local_analysis
+            or args.threshold_large_cyclic_honest_local_analysis
+        ):
+            raise ValueError(
+                "Use --threshold-real-off-cyclic-local-exact-analysis by itself, "
+                "not with other threshold modes."
+            )
+        run_real_off_cyclic_local_exact_analysis(
+            out_dir=args.out_dir,
+            n_values=args.N_values,
+            off_pcts=args.off_pcts,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            exact_source_dir=args.exact_source_dir,
+            exact_time_limit=args.exact_time_limit,
+            docs_path=Path("docs/local_threshold_real_off_cyclic_report.md"),
+        )
+        print("Wrote:", flush=True)
+        for output_name in (
+            "csv_data.tar.gz",
+            "local_threshold_real_off_report.md",
+            "real_off_raw_u_g_cdf_by_off_pct.png",
+            "real_off_fraction_exact_cdf.png",
+            "real_off_mean_fraction_by_off_pct.png",
+            "real_off_exact_recovery_by_off_pct.png",
+            "real_off_best_cyclic_start_hist.png",
+            "real_off_failure_diagnostics.png",
+            "real_off_runtime_by_method.png",
+        ):
+            output_path = args.out_dir / output_name
+            if output_path.exists():
+                print(f"  {output_path}", flush=True)
+        docs_output = Path("docs/local_threshold_real_off_cyclic_report.md")
+        if docs_output.exists():
+            print(f"  {docs_output}", flush=True)
+        return
+
     if args.threshold_local_exact_analysis:
         if (
             args.threshold_exact_study
@@ -4064,6 +4348,8 @@ def main():
             or args.threshold_full_sweep
             or args.threshold_explore
             or args.threshold_rule_cdf
+            or args.threshold_large_cyclic_local_analysis
+            or args.threshold_large_cyclic_honest_local_analysis
         ):
             raise ValueError(
                 "Use --threshold-local-exact-analysis by itself, not with other threshold modes."

@@ -1,5 +1,7 @@
 # Threshold-Window Algorithm Report
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 Checked on 2026-07-02.
 
 This report describes the threshold-window antenna-selection algorithm used in

@@ -11,6 +11,14 @@ EXACT_K_RULES = (
     ("strong_weak", "strong/weak H3"),
 )
 
+HISTORICAL_ACTIVE_K_NOTE = (
+    "> Historical K semantics note: this report uses active-K semantics. "
+    "Here `K` is the number of selected/kept antennas, not the number turned off. "
+    "A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. "
+    "For real off-percent experiments, `25% off => K_active=0.75N` and "
+    "`50% off => K_active=0.50N`."
+)
+
 
 def write_threshold_exact_k_analysis(exact_runs, formula_runs, out_dir):
     out_dir = Path(out_dir)
@@ -325,6 +333,8 @@ def write_exact_k_plots(rule_runs, best_t_summary, out_dir):
 def write_exact_k_report(rule_summary, best_t_summary, out_dir):
     lines = [
         "# Exact Study: K-Percentage Dependence",
+        "",
+        HISTORICAL_ACTIVE_K_NOTE,
         "",
         "This report compares exact best, best tested threshold, `T=0.05N`, and strong/weak H3 across requested active K percentages.",
         "For small `N`, different requested percentages can round to the same integer `K`; the tables include the mean actual `100*K/N` percentage.",

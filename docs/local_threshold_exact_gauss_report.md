@@ -1,5 +1,7 @@
 # Local Threshold Exact Gaussian Study
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 This experiment starts from a pure row-power threshold window and then applies greedy one-swap or two-swap local search by `U_G`.
 It uses saved exact Gaussian cases and reconstructs matrices from `(profile, seed, sample)`; brute force is not rerun here.
 

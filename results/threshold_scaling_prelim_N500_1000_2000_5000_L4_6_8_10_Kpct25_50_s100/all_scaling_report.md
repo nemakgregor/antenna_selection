@@ -1,5 +1,7 @@
 # Preliminary Threshold Scaling Study
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 - N values: 500, 1000, 2000, 5000
 - L values: 2, 4, 6, 8, 10
 - Active K percentages: 25.0, 50.0

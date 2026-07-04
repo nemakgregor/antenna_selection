@@ -26,6 +26,20 @@ METRICS = (
     ("u_g", "General objective", "max"),
 )
 
+HISTORICAL_ACTIVE_K_NOTE = (
+    "> Historical K semantics note: this report uses active-K semantics. "
+    "Here `K` is the number of selected/kept antennas, not the number turned off. "
+    "A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. "
+    "For real off-percent experiments, `25% off => K_active=0.75N` and "
+    "`50% off => K_active=0.50N`."
+)
+
+REAL_OFF_K_NOTE = (
+    "> K semantics note: `off_pct` is the percent of antennas turned off. "
+    "`K_off = round(N * off_pct / 100)`, `K_active = N - K_off`, and the solver "
+    "variable `K` equals `K_active`."
+)
+
 
 def effective_channel_eigvals(V, x, P):
     active_idx = np.flatnonzero(x)
@@ -415,6 +429,8 @@ def write_report(summary, leaders, out_dir, args):
     lines = [
         "# Sigma Sweep",
         "",
+        _k_semantics_note(summary),
+        "",
         f"- N: {args.N}",
         f"- L: {args.L}",
         f"- K cases: {', '.join(k_cases)}",
@@ -461,6 +477,13 @@ def write_report(summary, leaders, out_dir, args):
         ]
     )
     write_markdown(out_dir / "sigma_sweep_report.md", lines)
+
+
+def _k_semantics_note(summary):
+    modes = set(summary["K_mode"].astype(str)) if "K_mode" in summary else set()
+    if modes == {"off_pct"}:
+        return REAL_OFF_K_NOTE
+    return HISTORICAL_ACTIVE_K_NOTE
 
 
 def validate_args(args, K_cases):

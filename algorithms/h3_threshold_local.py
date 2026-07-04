@@ -6,6 +6,60 @@ import numpy as np
 from .common import objective_from_gram
 
 
+def cyclic_threshold_window_selection(V, K, start):
+    V, K = _validate_matrix_and_k(V, K)
+    N = V.shape[0]
+    x = np.zeros(N, dtype=int)
+    if K == 0:
+        return x
+    if K == N:
+        x[:] = 1
+        return x
+
+    start = int(start) % N
+    row_powers = np.sum(np.abs(V) ** 2, axis=1).real
+    order = np.argsort(row_powers)[::-1]
+    ranks = (start + np.arange(K)) % N
+    x[order[ranks]] = 1
+    return x
+
+
+def best_cyclic_threshold_window(V, K, sigma=1.0, P=1.0):
+    started_at = time.perf_counter()
+    V, K = _validate_matrix_and_k(V, K)
+    N, L = V.shape
+    if K == 0:
+        x = np.zeros(N, dtype=int)
+        return _seed_result(x, 0, 1, (0.0, 0.0, 0.0), started_at)
+
+    row_powers = np.sum(np.abs(V) ** 2, axis=1).real
+    order = np.argsort(row_powers)[::-1]
+    row_grams = V[:, :, None].conj() * V[:, None, :]
+
+    starts = [0] if K == N else range(N)
+    best = None
+    candidate_count = 0
+    for start in starts:
+        ranks = (int(start) + np.arange(K)) % N
+        subset = tuple(sorted(int(value) for value in order[ranks]))
+        gram = row_grams[list(subset)].sum(axis=0)
+        max_row_power = float(np.max(row_powers[list(subset)]))
+        values = objective_from_gram(
+            gram,
+            max_row_power,
+            L,
+            sigma=sigma,
+            P=P,
+        )
+        candidate_count += 1
+        if best is None or values[2] > best["values"][2] + 1e-12:
+            best = {"start": int(start), "subset": subset, "values": values}
+
+    x = np.zeros(N, dtype=int)
+    x[list(best["subset"])] = 1
+    return _seed_result(x, best["start"], candidate_count, best["values"], started_at)
+
+
 def threshold_window_selection(V, K, T):
     V, K, T = _validate_and_clip_threshold(V, K, T)
     N = V.shape[0]
@@ -34,17 +88,88 @@ def refine_threshold_by_swaps(
     if max_swaps < 0:
         raise ValueError("max_swaps must be non-negative.")
 
-    N, L = V.shape
     x0 = threshold_window_selection(V, K, T)
+    row_powers = np.sum(np.abs(V) ** 2, axis=1).real
+    order = np.argsort(row_powers)[::-1]
+    initial_subset = tuple(int(value) for value in np.flatnonzero(x0))
+    active = set(initial_subset)
+    radius = _candidate_radius(K, candidate_radius)
+    add_pool = _boundary_add_pool(order, active, T, K, radius)
+    return _refine_selection_by_swaps(
+        V,
+        x0,
+        max_swaps=max_swaps,
+        sigma=sigma,
+        P=P,
+        candidate_radius=radius,
+        candidate_pool=add_pool,
+        seed_position=T,
+        started_at=started_at,
+    )
+
+
+def refine_selection_by_swaps(
+    V,
+    x0,
+    max_swaps,
+    sigma=1.0,
+    P=1.0,
+    candidate_radius=None,
+    candidate_pool=None,
+    seed_position=0,
+):
+    return _refine_selection_by_swaps(
+        V,
+        x0,
+        max_swaps=max_swaps,
+        sigma=sigma,
+        P=P,
+        candidate_radius=candidate_radius,
+        candidate_pool=candidate_pool,
+        seed_position=seed_position,
+        started_at=time.perf_counter(),
+    )
+
+
+def _refine_selection_by_swaps(
+    V,
+    x0,
+    max_swaps,
+    sigma=1.0,
+    P=1.0,
+    candidate_radius=None,
+    candidate_pool=None,
+    seed_position=0,
+    started_at=None,
+):
+    if started_at is None:
+        started_at = time.perf_counter()
+    V = np.asarray(V)
+    if V.ndim != 2:
+        raise ValueError("V must be a 2D complex matrix of shape (N, L).")
+    if not np.iscomplexobj(V):
+        V = V.astype(np.complex128)
+    x0 = np.asarray(x0, dtype=int)
+    if x0.ndim != 1 or x0.shape[0] != V.shape[0]:
+        raise ValueError("x0 must be a 1D selection vector with length N.")
+    if not np.isin(x0, [0, 1]).all():
+        raise ValueError("x0 must be a binary selection vector.")
+
+    max_swaps = int(max_swaps)
+    if max_swaps < 0:
+        raise ValueError("max_swaps must be non-negative.")
+
+    N, L = V.shape
+    K = int(np.sum(x0))
     initial_subset = tuple(int(value) for value in np.flatnonzero(x0))
     if K == 0:
         return _result(
-            x0,
+            np.zeros(N, dtype=int),
             initial_subset,
             initial_subset,
-            T,
+            seed_position,
             max_swaps,
-            0,
+            0 if candidate_radius is None else int(candidate_radius),
             0,
             0,
             0,
@@ -70,8 +195,12 @@ def refine_threshold_by_swaps(
     )
     initial_values = current_values
 
-    radius = _candidate_radius(K, candidate_radius)
-    add_pool = _boundary_add_pool(order, active, T, K, radius)
+    if candidate_pool is None:
+        radius = -1 if candidate_radius is None else int(max(0, candidate_radius))
+        add_pool = _rank_neighborhood_add_pool(order, active, radius)
+    else:
+        radius = -1 if candidate_radius is None else int(max(0, candidate_radius))
+        add_pool = _dedupe_pool(candidate_pool, active)
     evaluated_swap_count = 0
     swap_history = []
 
@@ -134,7 +263,7 @@ def refine_threshold_by_swaps(
         x,
         initial_subset,
         final_subset,
-        T,
+        seed_position,
         max_swaps,
         radius,
         len(add_pool),
@@ -202,6 +331,14 @@ def evaluate_threshold_local_rules(
 
 
 def _validate_and_clip_threshold(V, K, T):
+    V, K = _validate_matrix_and_k(V, K)
+    N = V.shape[0]
+    max_T = max(0, N - K)
+    T = int(np.clip(int(round(T)), 0, max_T))
+    return V, K, T
+
+
+def _validate_matrix_and_k(V, K):
     V = np.asarray(V)
     if V.ndim != 2:
         raise ValueError("V must be a 2D complex matrix of shape (N, L).")
@@ -212,9 +349,7 @@ def _validate_and_clip_threshold(V, K, T):
     K = int(K)
     if not (0 <= K <= N):
         raise ValueError("K must satisfy 0 <= K <= N.")
-    max_T = max(0, N - K)
-    T = int(np.clip(int(round(T)), 0, max_T))
-    return V, K, T
+    return V, K
 
 
 def _candidate_radius(K, candidate_radius):
@@ -235,6 +370,35 @@ def _boundary_add_pool(order, active, T, K, radius):
             add_pool.append(index)
             seen.add(index)
     return tuple(add_pool)
+
+
+def _rank_neighborhood_add_pool(order, active, radius):
+    if radius < 0:
+        return tuple(int(index) for index in order if int(index) not in active)
+    ranks = {int(rank) for rank, index in enumerate(order) if int(index) in active}
+    pool = []
+    seen = set()
+    N = len(order)
+    for rank in sorted(ranks):
+        start = max(0, rank - radius)
+        stop = min(N, rank + radius + 1)
+        for candidate_rank in range(start, stop):
+            index = int(order[candidate_rank])
+            if index not in active and index not in seen:
+                pool.append(index)
+                seen.add(index)
+    return tuple(pool)
+
+
+def _dedupe_pool(candidate_pool, active):
+    pool = []
+    seen = set()
+    for value in candidate_pool:
+        index = int(value)
+        if index not in active and index not in seen:
+            pool.append(index)
+            seen.add(index)
+    return tuple(pool)
 
 
 def _active_power_leaders(active_idx, row_powers):
@@ -262,6 +426,22 @@ def _swap_history_to_string(history):
         f"{int(item['remove'])}>{int(item['add'])}@{float(item['u_g']):.12g}"
         for item in history
     )
+
+
+def _seed_result(x, seed_position, candidate_count, values, started_at):
+    subset = tuple(int(value) for value in np.flatnonzero(x))
+    return {
+        "x": x,
+        "T": int(seed_position),
+        "initial_subset": subset,
+        "subset": subset,
+        "candidate_count": int(candidate_count),
+        "u_bf": float(values[0]),
+        "u_i": float(values[1]),
+        "u_g": float(values[2]),
+        "u_g_db": 10.0 * np.log10(max(float(values[2]), np.finfo(float).tiny)),
+        "elapsed_seconds": float(time.perf_counter() - started_at),
+    }
 
 
 def _result(

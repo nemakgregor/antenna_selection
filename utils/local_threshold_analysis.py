@@ -24,6 +24,14 @@ LOCAL_LABELS = {
     "T_0p05N_s2": "T=0.05N + 2 swaps",
 }
 
+HISTORICAL_ACTIVE_K_NOTE = (
+    "> Historical K semantics note: this report uses active-K semantics. "
+    "Here `K` is the number of selected/kept antennas, not the number turned off. "
+    "A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. "
+    "For real off-percent experiments, `25% off => K_active=0.75N` and "
+    "`50% off => K_active=0.50N`."
+)
+
 
 def run_local_threshold_exact_analysis(
     exact_dir,
@@ -427,6 +435,8 @@ def write_local_threshold_report(
     lines = [
         "# Local Threshold Exact Gaussian Study",
         "",
+        HISTORICAL_ACTIVE_K_NOTE,
+        "",
         "This experiment starts from a pure row-power threshold window and then applies greedy one-swap or two-swap local search by `U_G`.",
         "It uses saved exact Gaussian cases and reconstructs matrices from `(profile, seed, sample)`; brute force is not rerun here.",
         "",
@@ -439,6 +449,16 @@ def write_local_threshold_report(
         f"- Requested active K percentages: {', '.join(_format_pct(value) for value in sorted(local_runs['active_pct'].unique())) if not local_runs.empty else ''}",
         "- Seed rules: `best_tested_T`, `T=0`, `T=0.025N`, `T=0.05N`.",
         "- Local search: all active rows are removable; add candidates are inactive rows near the window boundary.",
+        "",
+        "## Local Swap Scheme And Cost",
+        "",
+        "- A `1-swap` removes one currently active antenna and adds one currently inactive antenna, preserving exact `K`.",
+        "- One local-search pass evaluates every `(remove, add)` pair from the current active set and the boundary add-candidate pool, applies only the single pair with the largest positive `U_G` improvement, and stops if no pair improves `U_G`.",
+        "- `2-swap` means two greedy passes, not an exhaustive simultaneous two-pair exchange.",
+        "- The boundary add pool uses radius `max(8, ceil(0.05K))` by default unless the experiment overrides it.",
+        "- With `S` greedy passes, `A` add candidates, and `L` streams, local refinement costs `O(S * K * A * L^3)` time after row Gram matrices are built.",
+        "- The threshold seed itself needs sorting plus one window evaluation: `O(N log N + K * L^2 + L^3)` time.",
+        "- Extra working space is `O(N * L^2 + K + A + L^2)` for row Gram matrices, active/add sets, and the current Gram matrix.",
         "",
         "## Direct Answer",
         "",

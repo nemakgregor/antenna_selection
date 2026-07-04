@@ -1,5 +1,7 @@
 # Exact On Gauss: Threshold-Window Diagnostics
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 This report analyzes all non-smoke Gaussian exact experiments currently under `results/threshold_exact_gaussian*`.
 The mechanism analysis deduplicates repeated actual exact problems by `(N, L, K, seed, sample, sigma, P)` so overlapping folders and rounded K percentages do not double-count the same matrix/subset problem.
 

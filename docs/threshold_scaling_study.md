@@ -1,5 +1,7 @@
 # Preliminary Threshold Scaling Study
 
+> Historical K semantics note: this report uses active-K semantics. Here `K` is the number of selected/kept antennas, not the number turned off. A `25% active` or `K=0.25N` case means `75% off`, not the real `25% off` task. For real off-percent experiments, `25% off => K_active=0.75N` and `50% off => K_active=0.50N`.
+
 This experiment studies whether the threshold-window parameter `T` scales better
 with `N`, active `K`, stream count `L`, or row-power distribution metrics.
 Production solvers are unchanged.

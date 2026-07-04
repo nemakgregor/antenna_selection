@@ -30,7 +30,10 @@ from algorithms.h3_threshold_explore import (
     threshold_power_window,
 )
 from algorithms.h3_threshold_local import (
+    best_cyclic_threshold_window,
+    cyclic_threshold_window_selection,
     evaluate_threshold_local_rules,
+    refine_selection_by_swaps,
     refine_threshold_by_swaps,
     threshold_window_selection,
 )
@@ -47,6 +50,16 @@ from experiments.algorithm_comparison import (
 )
 from utils.brute_force import brute_force_exact_u_g, contiguous_threshold_window_T
 from utils.local_threshold_analysis import run_local_threshold_exact_analysis
+from utils.local_threshold_real_off_analysis import (
+    active_k_from_active_pct,
+    active_k_from_off_pct,
+    run_active_k_cyclic_local_exact_analysis,
+    run_real_off_cyclic_local_exact_analysis,
+)
+from utils.local_threshold_large_analysis import (
+    run_large_cyclic_honest_local_analysis,
+    run_large_cyclic_local_analysis,
+)
 
 
 def evaluate_algorithms(V, K, sigma=1.0, P=1.0, random_state=None):
@@ -431,6 +444,211 @@ class TestAntennaSelection(unittest.TestCase):
             )
             self.assertEqual(int(np.sum(result["x"])), self.K)
             self.assertTrue(np.isfinite([result["u_bf"], result["u_i"], result["u_g"]]).all())
+
+    def test_real_off_active_k_conversion(self):
+        self.assertEqual(active_k_from_off_pct(1000, 25), (750, 250))
+        self.assertEqual(active_k_from_off_pct(1000, 50), (500, 500))
+        self.assertEqual(active_k_from_off_pct(24, 25), (18, 6))
+        self.assertEqual(active_k_from_off_pct(24, 50), (12, 12))
+        self.assertEqual(active_k_from_active_pct(1000, 25), (250, 750))
+        self.assertEqual(active_k_from_active_pct(1000, 75), (750, 250))
+
+    def test_cyclic_threshold_window_wraparound_exact_k(self):
+        V = np.array(
+            [
+                [6.0 + 0j, 0.0 + 0j],
+                [5.0 + 0j, 0.0 + 0j],
+                [4.0 + 0j, 0.0 + 0j],
+                [3.0 + 0j, 0.0 + 0j],
+                [2.0 + 0j, 0.0 + 0j],
+                [1.0 + 0j, 0.0 + 0j],
+            ]
+        )
+        x = cyclic_threshold_window_selection(V, K=4, start=4)
+        self.assertEqual(int(np.sum(x)), 4)
+        self.assertEqual(set(np.flatnonzero(x)), {0, 1, 4, 5})
+
+    def test_real_off_formula_and_strong_weak_seeds_exact_k(self):
+        K_active, K_off = active_k_from_off_pct(self.N, 25)
+        self.assertEqual(K_active, 75)
+        self.assertEqual(K_off, 25)
+        formula_x = threshold_window_selection(self.V_L2, K_active, T=round(0.05 * self.N))
+        strong_x = solve_h3_strong_weak(self.V_L2, K_active)
+        cyclic = best_cyclic_threshold_window(self.V_L2, K_active, sigma=1.0, P=1.0)
+        for x in (formula_x, strong_x, cyclic["x"]):
+            self.assertEqual(int(np.sum(x)), K_active)
+        self.assertTrue(np.isfinite([cyclic["u_bf"], cyclic["u_i"], cyclic["u_g"]]).all())
+
+    def test_real_off_local_swaps_from_all_seeds_never_decrease(self):
+        K_active, _K_off = active_k_from_off_pct(20, 25)
+        rng = np.random.RandomState(123)
+        V = generate_v_profile_from_rng(rng, 20, 2, profile="gaussian")
+        cyclic = best_cyclic_threshold_window(V, K_active, sigma=1.0, P=1.0)
+        seeds = [
+            cyclic["x"],
+            threshold_window_selection(V, K_active, T=round(0.05 * 20)),
+            solve_h3_strong_weak(V, K_active),
+        ]
+        for x0 in seeds:
+            zero = refine_selection_by_swaps(V, x0, max_swaps=0, sigma=1.0, P=1.0)
+            one = refine_selection_by_swaps(V, x0, max_swaps=1, sigma=1.0, P=1.0)
+            two = refine_selection_by_swaps(V, x0, max_swaps=2, sigma=1.0, P=1.0)
+            self.assertEqual(int(np.sum(zero["x"])), K_active)
+            self.assertEqual(int(np.sum(one["x"])), K_active)
+            self.assertEqual(int(np.sum(two["x"])), K_active)
+            self.assertGreaterEqual(one["u_g"], zero["u_g"] - 1e-9)
+            self.assertGreaterEqual(two["u_g"], one["u_g"] - 1e-9)
+
+    def test_real_off_cyclic_local_exact_analysis_tiny_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "real_off"
+            docs_path = Path(tmpdir) / "doc.md"
+            outputs = run_real_off_cyclic_local_exact_analysis(
+                out_dir=out_dir,
+                n_values=[8],
+                off_pcts=[25, 50],
+                profiles=["gaussian"],
+                generator_seeds=[42],
+                samples=1,
+                L=2,
+                sigma=1.0,
+                P=1.0,
+                exact_source_dir=None,
+                exact_time_limit=5.0,
+                archive_csv=True,
+                docs_path=docs_path,
+            )
+            runs = outputs["local_runs"]
+            self.assertFalse(runs.empty)
+            self.assertEqual(set(runs["K_active"]), {6, 4})
+            self.assertEqual(set(runs["K_off"]), {2, 4})
+            self.assertEqual(set(runs["max_swaps"]), {0, 1, 2})
+            self.assertTrue((runs["active_count"] == runs["K_active"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_exact_u_g"]).all())
+            self.assertTrue((out_dir / "local_threshold_real_off_report.md").exists())
+            self.assertTrue((out_dir / "csv_data.tar.gz").exists())
+            self.assertFalse(any(out_dir.glob("*.csv")))
+            self.assertFalse(any(out_dir.glob("*.csv.gz")))
+            self.assertTrue(docs_path.exists())
+
+    def test_active_k_cyclic_local_exact_analysis_tiny_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "active_k"
+            docs_path = Path(tmpdir) / "active_doc.md"
+            outputs = run_active_k_cyclic_local_exact_analysis(
+                out_dir=out_dir,
+                n_values=[8],
+                active_pcts=[25, 50, 75],
+                profiles=["gaussian"],
+                generator_seeds=[42],
+                samples=1,
+                L=2,
+                sigma=1.0,
+                P=1.0,
+                exact_source_dir=None,
+                exact_time_limit=5.0,
+                archive_csv=True,
+                docs_path=docs_path,
+            )
+            runs = outputs["local_runs"]
+            self.assertFalse(runs.empty)
+            self.assertEqual(set(runs["K_active"]), {2, 4, 6})
+            self.assertEqual(set(runs["requested_active_pct"]), {25.0, 50.0, 75.0})
+            self.assertEqual(set(runs["max_swaps"]), {0, 1, 2})
+            self.assertTrue((runs["active_count"] == runs["K_active"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_exact_u_g"]).all())
+            self.assertTrue((out_dir / "local_threshold_active_k_report.md").exists())
+            self.assertTrue((out_dir / "csv_data.tar.gz").exists())
+            self.assertFalse(any(out_dir.glob("*.csv")))
+            self.assertFalse(any(out_dir.glob("*.csv.gz")))
+            self.assertTrue(docs_path.exists())
+
+    def test_large_cyclic_local_analysis_tiny_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "large"
+            docs_path = Path(tmpdir) / "large_doc.md"
+            outputs = run_large_cyclic_local_analysis(
+                out_dir=out_dir,
+                N=20,
+                K_values=[10, 15],
+                profiles=["gaussian"],
+                generator_seeds=[42],
+                samples=1,
+                L=2,
+                sigma=1.0,
+                P=1.0,
+                archive_csv=True,
+                docs_path=docs_path,
+            )
+            runs = outputs["runs"]
+            self.assertFalse(runs.empty)
+            self.assertEqual(set(runs["K_active"]), {10, 15})
+            self.assertEqual(set(runs["seed_rule"]), {"best_cyclic_window", "T_0p05N", "strong_weak"})
+            self.assertEqual(set(runs["max_swaps"]), {0, 1, 2})
+            self.assertTrue((runs["active_count"] == runs["K_active"]).all())
+            self.assertTrue(np.isfinite(runs["u_g"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_best_cyclic_seed_u_g"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_best_observed_u_g"]).all())
+
+            for (_sample, K, seed_rule), group in runs.groupby(["sample", "K_active", "seed_rule"]):
+                by_swaps = group.set_index("max_swaps")["u_g"]
+                self.assertGreaterEqual(by_swaps.loc[1], by_swaps.loc[0] - 1e-9)
+                self.assertGreaterEqual(by_swaps.loc[2], by_swaps.loc[1] - 1e-9)
+
+            self.assertTrue((out_dir / "local_threshold_large_report.md").exists())
+            self.assertTrue((out_dir / "csv_data.tar.gz").exists())
+            self.assertFalse(any(out_dir.glob("*.csv")))
+            self.assertFalse(any(out_dir.glob("*.csv.gz")))
+            self.assertTrue(docs_path.exists())
+
+    def test_large_cyclic_honest_local_analysis_all_inactive_output(self):
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_dir = Path(tmpdir) / "large_honest"
+            docs_path = Path(tmpdir) / "large_honest_doc.md"
+            outputs = run_large_cyclic_honest_local_analysis(
+                out_dir=out_dir,
+                N=100,
+                K_values=[50, 75],
+                profiles=["gaussian"],
+                generator_seeds=[42],
+                samples=1,
+                L=2,
+                sigma=1.0,
+                P=1.0,
+                archive_csv=True,
+                docs_path=docs_path,
+                bounded_reference_dir=None,
+            )
+            runs = outputs["runs"]
+            self.assertFalse(runs.empty)
+            self.assertEqual(set(runs["K_active"]), {50, 75})
+            self.assertEqual(set(runs["seed_rule"]), {"best_cyclic_window", "T_0p05N", "strong_weak"})
+            self.assertEqual(set(runs["max_swaps"]), {0, 1})
+            self.assertTrue((runs["active_count"] == runs["K_active"]).all())
+            self.assertTrue(np.isfinite(runs["u_g"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_best_cyclic_seed_u_g"]).all())
+            self.assertTrue(np.isfinite(runs["fraction_best_observed_u_g"]).all())
+
+            one_swap = runs[runs["max_swaps"] == 1]
+            self.assertFalse(one_swap.empty)
+            for _, row in one_swap.iterrows():
+                expected_pairs = int(row["K_active"]) * int(row["K_off"])
+                self.assertEqual(int(row["add_candidate_count"]), int(row["K_off"]))
+                self.assertEqual(int(row["evaluated_swap_count"]), expected_pairs)
+
+            for (_sample, K, seed_rule), group in runs.groupby(["sample", "K_active", "seed_rule"]):
+                by_swaps = group.set_index("max_swaps")
+                self.assertEqual(
+                    str(by_swaps.loc[0, "initial_subset"]),
+                    str(by_swaps.loc[0, "subset"]),
+                )
+                self.assertGreaterEqual(by_swaps.loc[1, "u_g"], by_swaps.loc[0, "u_g"] - 1e-9)
+
+            self.assertTrue((out_dir / "local_threshold_large_honest_report.md").exists())
+            self.assertTrue((out_dir / "csv_data.tar.gz").exists())
+            self.assertFalse(any(out_dir.glob("*.csv")))
+            self.assertFalse(any(out_dir.glob("*.csv.gz")))
+            self.assertTrue(docs_path.exists())
 
     def test_threshold_local_exact_analysis_tiny_output(self):
         args = SimpleNamespace(
