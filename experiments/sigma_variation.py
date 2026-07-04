@@ -68,7 +68,7 @@ def parse_args():
         type=float,
         nargs="+",
         default=None,
-        help="Disabled antenna percentages, matching grid_benchmark off_pct.",
+        help="Disabled antenna percentages, matching algorithm_comparison --off-pcts.",
     )
     parser.add_argument("--samples", type=int, default=1)
     parser.add_argument("--seed", type=int, default=42)

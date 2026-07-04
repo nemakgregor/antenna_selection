@@ -17,9 +17,8 @@ objective `U_G`.
 - `visualization/`: plotting functions used by active experiments.
 - `utils/`: data generation, solver evaluation, solver sets, IO helpers, and
   matplotlib backend setup.
-- `deprecated/experiments/`: old experiments kept for reference only.
 - `docs/`: reproducible commands and notes.
-- `results/`: generated benchmark artifacts.
+- `results/`: generated benchmark artifacts. This directory is ignored by Git.
 
 ## Commands
 

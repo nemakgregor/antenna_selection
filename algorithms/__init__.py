@@ -2,7 +2,6 @@ from .common import calculate_objectives, check_constraints
 from .cap_window import solve_cap_window_full_gen, solve_cap_window_gen
 from .cap_submodular import (
     solve_cap_submodular_gen,
-    solve_cap_submodular_lazy_gen,
     solve_cap_submodular_portfolio_gen,
 )
 from .coutino import solve_backward_true_greedy, solve_coutino_greedy
@@ -25,7 +24,6 @@ __all__ = [
     "solve_coutino_greedy",
     "solve_coutino_schur_greedy",
     "solve_cap_submodular_gen",
-    "solve_cap_submodular_lazy_gen",
     "solve_cap_submodular_portfolio_gen",
     "solve_cap_window_gen",
     "solve_cap_window_full_gen",
