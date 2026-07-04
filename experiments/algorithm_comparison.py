@@ -29,10 +29,15 @@ OUR_ALGORITHMS = (
 )
 FOCUSED_H3_CAP_WINDOW = (
     "H3",
+    "H3-1SwapLS-Gen",
     "H3ThresholdT123-Gen",
+    "H3ThresholdT123-1SwapLS-Gen",
     "CapWindow-Gen",
+    "CapWindow-1SwapLS-Gen",
     "CapWindowFull-Gen",
+    "CapWindowFull-1SwapLS-Gen",
     "CapSubmod-Gen",
+    "CapSubmod-1SwapLS-Gen",
 )
 
 

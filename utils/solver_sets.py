@@ -15,6 +15,7 @@ from algorithms import (
     solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
+    refine_general_1swap,
     solve_thresholded_logdet_greedy,
 )
 
@@ -60,6 +61,13 @@ SWAP_THRESH_LOGDET_KWARGS = {
     "lambdas": (1.0,),
     "threshold_scan_size": 5,
     "swap_max_passes": 1,
+}
+
+FAST_1SWAP_LS_KWARGS = {
+    "max_passes": 3,
+    "remove_limit": 64,
+    "add_limit": 128,
+    "boundary_limit": 128,
 }
 
 
@@ -194,6 +202,38 @@ def _cap_submodular_portfolio(V, K, sigma, P, random_state=None):
         P=P,
         random_state=random_state,
     )
+
+
+def _general_1swap_from(base_solver, V, K, sigma, P, random_state=None):
+    x = base_solver(V, K, sigma, P, random_state=random_state)
+    return refine_general_1swap(
+        V,
+        x,
+        K,
+        sigma=sigma,
+        P=P,
+        **FAST_1SWAP_LS_KWARGS,
+    )
+
+
+def _h3_strong_weak_1swap(V, K, sigma, P, random_state=None):
+    return _general_1swap_from(_h3_strong_weak, V, K, sigma, P, random_state)
+
+
+def _h3_threshold_t123_gen_1swap(V, K, sigma, P, random_state=None):
+    return _general_1swap_from(_h3_threshold_t123_gen, V, K, sigma, P, random_state)
+
+
+def _cap_window_1swap(V, K, sigma, P, random_state=None):
+    return _general_1swap_from(_cap_window, V, K, sigma, P, random_state)
+
+
+def _cap_window_full_1swap(V, K, sigma, P, random_state=None):
+    return _general_1swap_from(_cap_window_full, V, K, sigma, P, random_state)
+
+
+def _cap_submodular_1swap(V, K, sigma, P, random_state=None):
+    return _general_1swap_from(_cap_submodular, V, K, sigma, P, random_state)
 
 
 def _thresholded_logdet_solver(solver_kwargs):
@@ -340,10 +380,15 @@ CDF_SOLVERS = (
 
 REQUESTED_GEN_SOLVERS = (
     ("H3", _h3_strong_weak),
+    ("H3-1SwapLS-Gen", _h3_strong_weak_1swap),
     ("H3ThresholdT123-Gen", _h3_threshold_t123_gen),
+    ("H3ThresholdT123-1SwapLS-Gen", _h3_threshold_t123_gen_1swap),
     ("CapWindow-Gen", _cap_window),
+    ("CapWindow-1SwapLS-Gen", _cap_window_1swap),
     ("CapWindowFull-Gen", _cap_window_full),
+    ("CapWindowFull-1SwapLS-Gen", _cap_window_full_1swap),
     ("CapSubmod-Gen", _cap_submodular),
+    ("CapSubmod-1SwapLS-Gen", _cap_submodular_1swap),
 )
 
 MOTOR_SOLVERS = (

@@ -21,6 +21,7 @@ from algorithms import (
     solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
+    refine_general_1swap,
     solve_thresholded_logdet_greedy,
 )
 from utils.solver_sets import MOTOR_SOLVERS
@@ -230,6 +231,27 @@ class TestAntennaSelection(unittest.TestCase):
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
         self.assertEqual(num_active, self.K)
+
+    def test_general_1swap_local_search_nonworse(self):
+        x = solve_h3_strong_weak(self.V_L4, self.K, sigma=1.0, P=1.0)
+        refined = refine_general_1swap(
+            self.V_L4,
+            x,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            max_passes=2,
+            remove_limit=20,
+            add_limit=30,
+            boundary_limit=30,
+        )
+        is_valid, num_active = check_constraints(refined, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+        base_u_g = calculate_objectives(self.V_L4, x, sigma=1.0, P=1.0)[2]
+        refined_u_g = calculate_objectives(self.V_L4, refined, sigma=1.0, P=1.0)[2]
+        self.assertGreaterEqual(refined_u_g, base_u_g - 1e-8)
 
     def test_thresholded_logdet_logic(self):
         x = solve_thresholded_logdet_greedy(

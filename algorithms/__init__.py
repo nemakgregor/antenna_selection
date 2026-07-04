@@ -12,6 +12,7 @@ from .h2 import solve_h2
 from .h3_fast import solve_h3_fast
 from .h3_strong_weak import solve_h3_strong_weak
 from .h3_threshold import solve_h3
+from .local_search import refine_general_1swap
 from .miso_energy import solve_miso_energy_greedy
 from .pareto import solve_pareto_interference_greedy
 from .thresholded_logdet import solve_thresholded_logdet_greedy
@@ -33,6 +34,7 @@ __all__ = [
     "solve_h3",
     "solve_h3_fast",
     "solve_h3_strong_weak",
+    "refine_general_1swap",
     "solve_miso_energy_greedy",
     "solve_pareto_interference_greedy",
     "solve_thresholded_logdet_greedy",
