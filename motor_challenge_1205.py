@@ -1,17 +1,25 @@
 import argparse
+import subprocess
 import sys
+import tarfile
+import tempfile
 import unittest
+from pathlib import Path
 
 import numpy as np
 
 from algorithms import (
+    best_cyclic_threshold_window,
     calculate_objectives,
     check_constraints,
+    cyclic_threshold_window_selection,
     solve_cap_submodular_gen,
+    solve_cap_submodular_uglocal_gen,
     solve_cap_submodular_portfolio_gen,
     solve_cap_window_full_gen,
     solve_coutino_greedy,
     solve_coutino_schur_greedy,
+    solve_frame_portfolio_uglocal_gen,
     solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
@@ -22,6 +30,9 @@ from algorithms import (
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
     refine_general_1swap,
+    refine_selection_by_ug_swaps,
+    refine_selection_by_ug_swaps_steps,
+    threshold_window_selection,
     solve_thresholded_logdet_greedy,
 )
 from utils.solver_sets import MOTOR_SOLVERS
@@ -252,6 +263,215 @@ class TestAntennaSelection(unittest.TestCase):
         base_u_g = calculate_objectives(self.V_L4, x, sigma=1.0, P=1.0)[2]
         refined_u_g = calculate_objectives(self.V_L4, refined, sigma=1.0, P=1.0)[2]
         self.assertGreaterEqual(refined_u_g, base_u_g - 1e-8)
+
+    def test_cyclic_threshold_window_exact_k_with_wraparound(self):
+        x = cyclic_threshold_window_selection(self.V_L2, self.K, start=self.N - 5)
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+        best = best_cyclic_threshold_window(self.V_L2, self.K, sigma=1.0, P=1.0)
+        is_valid, num_active = check_constraints(best["x"], self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+        self.assertGreaterEqual(best["T"], 0)
+        self.assertLess(best["T"], self.N)
+
+    def test_fixed_threshold_window_exact_k(self):
+        T = int(np.floor(0.05 * self.N + 0.5))
+        x = threshold_window_selection(self.V_L2, self.K, T)
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+    def test_ug_swap_zero_one_two_three_nonworse(self):
+        x0 = solve_h3_strong_weak(self.V_L2, self.K, sigma=1.0, P=1.0)
+        zero = refine_selection_by_ug_swaps(
+            self.V_L2,
+            x0,
+            max_swaps=0,
+            sigma=1.0,
+            P=1.0,
+            K=self.K,
+        )
+        self.assertTrue(np.array_equal(zero["x"], x0))
+
+        steps = refine_selection_by_ug_swaps_steps(
+            self.V_L2,
+            x0,
+            max_swaps_values=(0, 1, 2, 3),
+            sigma=1.0,
+            P=1.0,
+            K=self.K,
+        )
+        self.assertEqual(set(steps), {0, 1, 2, 3})
+        self.assertGreaterEqual(steps[1]["u_g"], steps[0]["u_g"] - 1e-8)
+        self.assertGreaterEqual(steps[2]["u_g"], steps[1]["u_g"] - 1e-8)
+        self.assertGreaterEqual(steps[3]["u_g"], steps[2]["u_g"] - 1e-8)
+        for result in steps.values():
+            is_valid, num_active = check_constraints(result["x"], self.K)
+            self.assertTrue(is_valid)
+            self.assertEqual(num_active, self.K)
+
+    def test_frame_and_cap_uglocal_wrappers_exact_k(self):
+        frame_x = solve_frame_portfolio_uglocal_gen(
+            self.V_L2,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+            max_swaps=1,
+            max_refined_starts=2,
+            lambdas=(),
+        )
+        cap_x = solve_cap_submodular_uglocal_gen(
+            self.V_L2,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+            max_swaps=1,
+        )
+        for x in (frame_x, cap_x):
+            is_valid, num_active = check_constraints(x, self.K)
+            self.assertTrue(is_valid)
+            self.assertEqual(num_active, self.K)
+
+    def test_ug_swap_seed_comparison_smoke(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "ug_swap_smoke"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "experiments.algorithm_comparison",
+                    "--ug-swap-seed-comparison",
+                    "--N",
+                    "20",
+                    "--L",
+                    "2",
+                    "--K-values",
+                    "10",
+                    "15",
+                    "--samples",
+                    "1",
+                    "--generator-seeds",
+                    "42",
+                    "--data-profiles",
+                    "gaussian",
+                    "--sigma",
+                    "1",
+                    "--out-dir",
+                    str(out_dir),
+                ],
+                check=True,
+            )
+            self.assertTrue((out_dir / "ug_swap_seed_summary.csv").exists())
+            self.assertTrue((out_dir / "ug_swap_seed_report.md").exists())
+            self.assertTrue((out_dir / "ug_swap_raw_u_g_cdf.png").exists())
+            archive_path = out_dir / "csv_data.tar.gz"
+            self.assertTrue(archive_path.exists())
+            with tarfile.open(archive_path, "r:gz") as archive:
+                self.assertIn("ug_swap_seed_runs.csv", archive.getnames())
+
+    def test_cyclic_best_3swap_analysis_smoke_and_plot_only(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            baseline_dir = root / "baseline"
+            out_dir = root / "cyclic3"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "experiments.algorithm_comparison",
+                    "--ug-swap-seed-comparison",
+                    "--N",
+                    "20",
+                    "--L",
+                    "2",
+                    "--K-values",
+                    "10",
+                    "15",
+                    "--samples",
+                    "1",
+                    "--generator-seeds",
+                    "42",
+                    "--data-profiles",
+                    "gaussian",
+                    "--sigma",
+                    "1",
+                    "--out-dir",
+                    str(baseline_dir),
+                ],
+                check=True,
+            )
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "experiments.algorithm_comparison",
+                    "--cyclic-best-3swap-analysis",
+                    "--N",
+                    "20",
+                    "--L",
+                    "2",
+                    "--K-values",
+                    "10",
+                    "15",
+                    "--samples",
+                    "1",
+                    "--generator-seeds",
+                    "42",
+                    "--data-profiles",
+                    "gaussian",
+                    "--sigma",
+                    "1",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                    "--out-dir",
+                    str(out_dir),
+                ],
+                check=True,
+            )
+            self.assertTrue((out_dir / "cyclic_best_3swap_summary.csv").exists())
+            self.assertTrue((out_dir / "cyclic_best_3swap_improvement.csv").exists())
+            self.assertTrue((out_dir / "combined_previous_vs_cyclic3_summary.csv").exists())
+            self.assertTrue((out_dir / "cyclic_best_3swap_report.md").exists())
+            self.assertTrue((out_dir / "cyclic_best_3swap_raw_u_g_cdf.png").exists())
+            archive_path = out_dir / "csv_data.tar.gz"
+            self.assertTrue(archive_path.exists())
+            with tarfile.open(archive_path, "r:gz") as archive:
+                self.assertIn("cyclic_best_3swap_runs.csv", archive.getnames())
+
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "experiments.algorithm_comparison",
+                    "--cyclic-best-3swap-analysis",
+                    "--plot-only",
+                    "--N",
+                    "20",
+                    "--L",
+                    "2",
+                    "--K-values",
+                    "10",
+                    "15",
+                    "--samples",
+                    "1",
+                    "--generator-seeds",
+                    "42",
+                    "--data-profiles",
+                    "gaussian",
+                    "--sigma",
+                    "1",
+                    "--baseline-dir",
+                    str(baseline_dir),
+                    "--out-dir",
+                    str(out_dir),
+                ],
+                check=True,
+            )
 
     def test_thresholded_logdet_logic(self):
         x = solve_thresholded_logdet_greedy(
