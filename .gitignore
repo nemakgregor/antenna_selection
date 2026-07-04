@@ -8,14 +8,11 @@ __pycache__/
 venv/
 .venv/
 
-results/**/*.tmp
-
 # Local benchmark artifacts generated during experiments.
-results/cdf_*/
-results/smoke_*/
-results/**/*.log
-results/**/algorithm_percent_*.csv
-results/**/algorithm_vs_h1_h2_*.csv
-results/**/algorithm_vs_h1_h2_*.md
-results/**/algorithm_vs_h1_h2_*.png
+results/
+
+# Old local paper/artifact cache. Keep source references in docs instead.
+publiucations/
+max-cut/
+
 *.zip

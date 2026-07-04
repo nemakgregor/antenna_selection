@@ -7,7 +7,11 @@ import numpy as np
 from algorithms import (
     calculate_objectives,
     check_constraints,
+    solve_cap_submodular_gen,
+    solve_cap_submodular_portfolio_gen,
+    solve_cap_window_full_gen,
     solve_coutino_greedy,
+    solve_coutino_schur_greedy,
     solve_cap_window_gen,
     solve_frame_portfolio,
     solve_h1,
@@ -17,6 +21,7 @@ from algorithms import (
     solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
+    solve_thresholded_logdet_greedy,
 )
 from utils.solver_sets import MOTOR_SOLVERS
 from utils.data import generate_V
@@ -79,6 +84,17 @@ class TestAntennaSelection(unittest.TestCase):
         self.assertTrue(is_valid)
         self.assertLessEqual(num_active, self.K)
         self.assertGreaterEqual(num_active, self.V_L4.shape[1])
+
+    def test_coutino_schur_logic(self):
+        x = solve_coutino_schur_greedy(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
 
     def test_miso_energy_greedy_logic(self):
         x = solve_miso_energy_greedy(self.V_L4, self.K)
@@ -174,6 +190,58 @@ class TestAntennaSelection(unittest.TestCase):
             sigma=1.0,
             P=1.0,
             random_state=42,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+    def test_cap_window_full_gen_logic(self):
+        x = solve_cap_window_full_gen(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+    def test_cap_submodular_gen_logic(self):
+        x = solve_cap_submodular_gen(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+    def test_cap_submodular_portfolio_gen_logic(self):
+        x = solve_cap_submodular_portfolio_gen(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+        )
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+
+    def test_thresholded_logdet_logic(self):
+        x = solve_thresholded_logdet_greedy(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            random_state=42,
+            threshold_scan_size=3,
+            eps_values=(1e-6,),
+            lambdas=(1.0,),
+            swap_max_passes=1,
         )
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)

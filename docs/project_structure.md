@@ -1,7 +1,7 @@
 # Project Structure
 
 The repository separates solver code, reusable helpers, active experiments,
-plotting code, and archived experiments.
+plotting code, and workflow notes.
 
 ## Directories
 
@@ -12,8 +12,7 @@ plotting code, and archived experiments.
   - `experiments.algorithm_comparison`: compare all algorithms with CDF-style `U_G` and runtime plots.
   - `experiments.sigma_variation`: vary `sigma` and plot objective/winner curves.
   - `experiments.gurobi_exact`: small exact Gurobi comparisons.
-- `deprecated/experiments/`: old experiments kept for reference, not part of the active workflow.
-- `results/`: generated benchmark artifacts.
+- `results/`: generated benchmark artifacts. This directory is ignored by Git.
 - `docs/`: workflow notes and reproducible commands.
 
 Run experiments through their package modules:

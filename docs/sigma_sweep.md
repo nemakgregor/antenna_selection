@@ -15,9 +15,9 @@ venv/bin/python -m experiments.sigma_variation \
   --out-dir results/sigma_sweep_N1000_L4_Kpct25_50_30samples
 ```
 
-For direct comparison with `grid_benchmark`, use `--off-pcts 25 50` instead.
-That matches the benchmark convention where `25` means 25 percent disabled, so
-`K = round(N * 0.75)`.
+For direct comparison with `experiments.algorithm_comparison`, use
+`--off-pcts 25 50` instead. That matches the CDF benchmark convention where
+`25` means 25 percent disabled, so `K = round(N * 0.75)`.
 
 Power-of-ten sigma repeat for 10 samples with 25 and 50 percent disabled:
 
@@ -57,3 +57,6 @@ different antenna set. With `L = 4`,
 `U_G = sigma^4 + sigma^3 sum(lambda_i) + sigma^2 e2(lambda) + sigma e3(lambda)
 + product(lambda_i)`, so the first algorithm-dependent term at large `sigma`
 tracks `U_BF`, not the interference objective.
+
+All generated CSV, JSON, report, and plot files belong under `results/`, which
+is ignored by Git.

@@ -5,11 +5,14 @@ from .common import default_min_active
 
 def solve_coutino_greedy(V, K, sigma=1.0, P=1.0, min_active=None):
     """
-    Coutino-style greedy deletion adapted to the task constraint sum(x) <= K.
+    Backward greedy deletion on the true general objective.
 
     Greedily delete the antenna whose removal leaves the largest
     log det(V_eq V_eq^* + sigma I), continue below K, and return the feasible
     set on that path with the best general objective.
+
+    This is kept under the historical function name for compatibility. It is
+    not the Coutino Schur-complement submodular surrogate.
     """
 
     N, L = V.shape
@@ -71,3 +74,7 @@ def solve_coutino_greedy(V, K, sigma=1.0, P=1.0, min_active=None):
         gram -= row_grams[antenna_to_delete]
 
     return best_x if best_x is not None else active.astype(int)
+
+
+def solve_backward_true_greedy(V, K, sigma=1.0, P=1.0, min_active=None):
+    return solve_coutino_greedy(V, K, sigma=sigma, P=P, min_active=min_active)
