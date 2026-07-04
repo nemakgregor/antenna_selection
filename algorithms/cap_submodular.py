@@ -4,6 +4,7 @@ import numpy as np
 
 
 DEFAULT_SCAN_SIZE = 17
+DEFAULT_POWER_TOLERANCE_FACTOR = 1e-3
 DEFAULT_PORTFOLIO_WINDOW_SCAN_SIZE = 129
 DEFAULT_PORTFOLIO_REFINE_CAPS = 1
 
@@ -15,6 +16,7 @@ def solve_cap_submodular_gen(
     P=1.0,
     random_state=None,
     scan_size=DEFAULT_SCAN_SIZE,
+    power_tolerance_factor=DEFAULT_POWER_TOLERANCE_FACTOR,
 ):
     """
     Cap-aware submodular relaxation for the general objective.
@@ -66,7 +68,8 @@ def solve_cap_submodular_gen(
     for tau in _candidate_thresholds(row_power, K, scan_size):
         if tau <= 0.0:
             continue
-        pool = np.flatnonzero(row_power <= tau + max(1e-12, abs(tau) * 1e-12))
+        tolerance = _power_tolerance(tau, power_tolerance_factor)
+        pool = np.flatnonzero(row_power <= float(tau) + tolerance)
         if len(pool) < K:
             continue
 
@@ -306,6 +309,12 @@ def _candidate_thresholds(row_power, K, scan_size):
     return np.asarray(sorted(thresholds), dtype=float)
 
 
+def _power_tolerance(tau, power_tolerance_factor):
+    if power_tolerance_factor <= 0.0:
+        return 0.0
+    return max(float(power_tolerance_factor), abs(float(tau)) * float(power_tolerance_factor))
+
+
 def _greedy_logdet_cap(V, pool, K, epsilon, eye):
     N = V.shape[0]
     if len(pool) <= K:
@@ -318,10 +327,7 @@ def _greedy_logdet_cap(V, pool, K, epsilon, eye):
     inv_matrix = (1.0 / float(epsilon)) * eye.copy()
 
     for _ in range(K):
-        leverage = np.real(
-            np.einsum("ni,ij,nj->n", V_pool, inv_matrix, V_pool.conj(), optimize=True)
-        )
-        scores = np.log1p(np.maximum(leverage, 0.0))
+        scores = np.maximum(_leverages_many(V_pool, inv_matrix), 0.0)
         scores[selected] = -np.inf
         pos = int(np.argmax(scores))
         selected[pos] = True
@@ -348,9 +354,7 @@ def _lazy_greedy_logdet_cap(V, pool, K, epsilon, eye):
     V_pool = V[pool]
     selected = np.zeros(len(pool), dtype=bool)
     inv_matrix = (1.0 / float(epsilon)) * eye.copy()
-    leverage = np.real(
-        np.einsum("ni,ij,nj->n", V_pool, inv_matrix, V_pool.conj(), optimize=True)
-    )
+    leverage = _leverages_many(V_pool, inv_matrix)
     gains = np.log1p(np.maximum(leverage, 0.0))
     heap = [(-float(gain), int(pos)) for pos, gain in enumerate(gains)]
     heapq.heapify(heap)
@@ -403,9 +407,42 @@ def _top_power_under_cap(row_power, K, tau):
 
 
 def _single_logdet_gain(row, inv_matrix):
-    vec = row.conj()
-    leverage = float(np.real(row @ (inv_matrix @ vec)))
+    leverage = _leverage_one(row, inv_matrix)
     return float(np.log1p(max(leverage, 0.0)))
+
+
+def _leverages_many(V_pool, inv_matrix):
+    L = V_pool.shape[1]
+    if L == 1:
+        values = V_pool[:, 0]
+        return np.real(values * inv_matrix[0, 0] * values.conj())
+    if L == 2:
+        v0 = V_pool[:, 0]
+        v1 = V_pool[:, 1]
+        c0 = v0.conj()
+        c1 = v1.conj()
+        inv_c0 = inv_matrix[0, 0] * c0 + inv_matrix[0, 1] * c1
+        inv_c1 = inv_matrix[1, 0] * c0 + inv_matrix[1, 1] * c1
+        return np.real(v0 * inv_c0 + v1 * inv_c1)
+
+    return np.real(
+        np.einsum("ni,ij,nj->n", V_pool, inv_matrix, V_pool.conj(), optimize=True)
+    )
+
+
+def _leverage_one(row, inv_matrix):
+    L = row.shape[0]
+    if L == 1:
+        return float(np.real(row[0] * inv_matrix[0, 0] * row[0].conj()))
+    if L == 2:
+        c0 = row[0].conj()
+        c1 = row[1].conj()
+        inv_c0 = inv_matrix[0, 0] * c0 + inv_matrix[0, 1] * c1
+        inv_c1 = inv_matrix[1, 0] * c0 + inv_matrix[1, 1] * c1
+        return float(np.real(row[0] * inv_c0 + row[1] * inv_c1))
+
+    vec = row.conj()
+    return float(np.real(row @ (inv_matrix @ vec)))
 
 
 def _true_log_general_score(row_grams, row_power, active, sigma, P, eye):

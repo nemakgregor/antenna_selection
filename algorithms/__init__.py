@@ -1,5 +1,5 @@
 from .common import calculate_objectives, check_constraints
-from .cap_window import solve_cap_window_gen
+from .cap_window import solve_cap_window_full_gen, solve_cap_window_gen
 from .cap_submodular import (
     solve_cap_submodular_gen,
     solve_cap_submodular_lazy_gen,
@@ -28,6 +28,7 @@ __all__ = [
     "solve_cap_submodular_lazy_gen",
     "solve_cap_submodular_portfolio_gen",
     "solve_cap_window_gen",
+    "solve_cap_window_full_gen",
     "solve_frame_portfolio",
     "solve_h1",
     "solve_h2",

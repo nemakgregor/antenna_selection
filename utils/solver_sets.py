@@ -1,7 +1,10 @@
+import numpy as np
+
 from algorithms import (
     solve_backward_true_greedy,
     solve_cap_submodular_gen,
     solve_cap_submodular_portfolio_gen,
+    solve_cap_window_full_gen,
     solve_cap_window_gen,
     solve_coutino_schur_greedy,
     solve_frame_portfolio,
@@ -101,6 +104,53 @@ def _threshold_solver(target_obj):
     return solver
 
 
+def _round_half_up(value):
+    return int(np.floor(float(value) + 0.5))
+
+
+def _h3_t1(N, K, L):
+    del K, L
+    return _round_half_up(0.05 * N)
+
+
+def _h3_t2(N, K, L):
+    del N, L
+    return _round_half_up(0.15 * K)
+
+
+def _h3_t3(N, K, L):
+    return _round_half_up(0.125 * N * L / (L + 2))
+
+
+def _h3_threshold_with_ts(V, K, sigma, P, t_values):
+    return solve_h3(
+        V,
+        K,
+        target_obj="gen",
+        sigma=sigma,
+        P=P,
+        t_tests=tuple(t_values),
+        include_phase_nulling=False,
+    )
+
+
+def _h3_threshold_t123_gen(V, K, sigma, P, random_state=None):
+    del random_state
+    N, L = V.shape
+    K = int(K)
+    return _h3_threshold_with_ts(
+        V,
+        K,
+        sigma,
+        P,
+        (
+            _h3_t1(N, K, L),
+            _h3_t2(N, K, L),
+            _h3_t3(N, K, L),
+        ),
+    )
+
+
 def _frame_solver(target_obj, frame_kwargs, external_starts=True, fixed_random_state=None):
     def solver(V, K, sigma, P, random_state=None):
         seed = fixed_random_state if fixed_random_state is not None else random_state
@@ -120,6 +170,10 @@ def _frame_solver(target_obj, frame_kwargs, external_starts=True, fixed_random_s
 
 def _cap_window(V, K, sigma, P, random_state=None):
     return solve_cap_window_gen(V, K, sigma=sigma, P=P, random_state=random_state)
+
+
+def _cap_window_full(V, K, sigma, P, random_state=None):
+    return solve_cap_window_full_gen(V, K, sigma=sigma, P=P, random_state=random_state)
 
 
 def _cap_submodular(V, K, sigma, P, random_state=None):
@@ -282,6 +336,14 @@ CDF_SOLVERS = (
     ("CapSubmodPort-Gen", _cap_submodular_portfolio),
     *_submodular_general_specs(),
     ("N-H3-Fast", _h3_fast()),
+)
+
+REQUESTED_GEN_SOLVERS = (
+    ("H3", _h3_strong_weak),
+    ("H3ThresholdT123-Gen", _h3_threshold_t123_gen),
+    ("CapWindow-Gen", _cap_window),
+    ("CapWindowFull-Gen", _cap_window_full),
+    ("CapSubmod-Gen", _cap_submodular),
 )
 
 MOTOR_SOLVERS = (

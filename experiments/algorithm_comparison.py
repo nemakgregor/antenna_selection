@@ -1,4 +1,5 @@
 import argparse
+from concurrent.futures import ProcessPoolExecutor, as_completed
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -18,7 +19,7 @@ try:
 except ImportError:
     tqdm = None
 
-from utils.solver_sets import CDF_SOLVERS
+from utils.solver_sets import CDF_SOLVERS, REQUESTED_GEN_SOLVERS
 from utils.data import DATA_PROFILES, generate_v_from_rng, generate_v_profile_from_rng
 from utils.evaluation import evaluate_solver
 from utils.brute_force import (
@@ -112,6 +113,12 @@ def parse_args():
         help="Optional subset of algorithm names. Default: every registered comparison algorithm.",
     )
     parser.add_argument(
+        "--solver-set",
+        choices=["cdf", "requested-gen"],
+        default="cdf",
+        help="Registered solver set to benchmark.",
+    )
+    parser.add_argument(
         "--checkpoint-every",
         type=int,
         default=25,
@@ -132,6 +139,12 @@ def parse_args():
         "--plot-only",
         action="store_true",
         help="Read cdf_runs.csv and rebuild summary/plots without running algorithms.",
+    )
+    parser.add_argument(
+        "--workers",
+        type=int,
+        default=1,
+        help="Worker processes for requested-gen runs. Default: sequential.",
     )
     parser.add_argument("--out-dir", type=Path, default=None)
     parser.add_argument(
@@ -386,13 +399,26 @@ def solver_random_state(generator_seed, sample, K, algorithm_index):
 
 
 def run_algorithm(name, solver, V, K, off_pct, args, random_state):
+    return run_algorithm_with_params(
+        name,
+        solver,
+        V,
+        K,
+        off_pct,
+        args.sigma,
+        args.P,
+        random_state,
+    )
+
+
+def run_algorithm_with_params(name, solver, V, K, off_pct, sigma, P, random_state):
     _, result = evaluate_solver(
         name,
         solver,
         V,
         K,
-        args.sigma,
-        args.P,
+        sigma,
+        P,
         random_state,
     )
     u_g_safe = max(result["u_g"], np.finfo(float).tiny)
@@ -404,6 +430,46 @@ def run_algorithm(name, solver, V, K, off_pct, args, random_state):
         "u_g": result["u_g"],
         "u_g_db": float(10.0 * np.log10(u_g_safe)),
         "elapsed_seconds": result["elapsed_seconds"],
+    }
+
+
+def run_algorithm_job(job):
+    (
+        generator_seed,
+        sample,
+        N,
+        L,
+        K,
+        off_pct,
+        sigma,
+        P,
+        algorithm_index,
+        name,
+        solver,
+        V,
+    ) = job
+    random_state = solver_random_state(generator_seed, sample, K, algorithm_index)
+    result = run_algorithm_with_params(
+        name,
+        solver,
+        V,
+        K,
+        off_pct,
+        sigma,
+        P,
+        random_state,
+    )
+    return {
+        "generator_seed": int(generator_seed),
+        "sample": int(sample),
+        "N": int(N),
+        "L": int(L),
+        "K": int(K),
+        "off_pct": float(off_pct),
+        "active_pct": float(100.0 - off_pct),
+        "sigma": float(sigma),
+        "P": float(P),
+        **result,
     }
 
 
@@ -499,6 +565,105 @@ def run_benchmark(args, algorithms, runs_path):
                         ):
                             atomic_write_csv(pd.DataFrame(rows), runs_path)
                             new_since_checkpoint = 0
+    finally:
+        if progress is not None:
+            progress.close()
+
+    runs = pd.DataFrame(rows)
+    atomic_write_csv(runs, runs_path)
+    print(f"Completed {total_new} new algorithm runs.", flush=True)
+    return runs
+
+
+def run_benchmark_parallel(args, algorithms, runs_path):
+    existing, all_completed = (
+        load_existing_runs(runs_path) if args.resume else (pd.DataFrame(), set())
+    )
+    rows = existing.to_dict("records") if not existing.empty else []
+    rerun_algorithms = set(args.rerun_algorithms or [])
+    if rerun_algorithms:
+        rows = [row for row in rows if row["algorithm"] not in rerun_algorithms]
+        all_completed = {key for key in all_completed if key[3] not in rerun_algorithms}
+
+    selected_names = [name for name, _ in algorithms]
+    selected_name_set = set(selected_names)
+    completed = {
+        key for key in all_completed
+        if key[3] in selected_name_set
+    }
+    total_cases = (
+        len(args.generator_seeds)
+        * args.samples
+        * len(args.off_cases)
+        * len(selected_names)
+    )
+
+    jobs = []
+    for generator_seed in args.generator_seeds:
+        rng = np.random.RandomState(generator_seed)
+        for sample in range(args.samples):
+            V = generate_v_from_rng(rng, args.N, args.L)
+            for off_case in args.off_cases:
+                off_pct = off_case["off_pct"]
+                K = off_case["K"]
+                for algorithm_index, (name, solver) in enumerate(algorithms):
+                    key = (int(generator_seed), int(sample), float(off_pct), name)
+                    if key in completed:
+                        continue
+                    jobs.append(
+                        (
+                            int(generator_seed),
+                            int(sample),
+                            int(args.N),
+                            int(args.L),
+                            int(K),
+                            float(off_pct),
+                            float(args.sigma),
+                            float(args.P),
+                            int(algorithm_index),
+                            name,
+                            solver,
+                            V,
+                        )
+                    )
+
+    progress = (
+        tqdm(
+            total=total_cases,
+            initial=min(len(completed), total_cases),
+            unit="run",
+            dynamic_ncols=True,
+        )
+        if tqdm is not None
+        else None
+    )
+    new_since_checkpoint = 0
+    total_new = 0
+
+    try:
+        with ProcessPoolExecutor(max_workers=max(1, int(args.workers))) as executor:
+            futures = [executor.submit(run_algorithm_job, job) for job in jobs]
+            for future in as_completed(futures):
+                row = future.result()
+                rows.append(row)
+                total_new += 1
+                new_since_checkpoint += 1
+
+                message = (
+                    f"seed={row['generator_seed']}, sample={row['sample']}, "
+                    f"off={row['off_pct']:g}%, K={row['K']}, "
+                    f"algorithm={row['algorithm']}"
+                )
+                if progress is not None:
+                    progress.set_postfix_str(message)
+                    progress.update(1)
+                else:
+                    case_no = len(completed) + total_new
+                    print(f"[{case_no}/{total_cases}] {message}", flush=True)
+
+                if args.checkpoint_every and new_since_checkpoint >= args.checkpoint_every:
+                    atomic_write_csv(pd.DataFrame(rows), runs_path)
+                    new_since_checkpoint = 0
     finally:
         if progress is not None:
             progress.close()
@@ -4320,7 +4485,12 @@ def main():
                 print(f"  {output_path}", flush=True)
         return
 
-    algorithms = select_algorithms(CDF_SOLVERS, args)
+    all_algorithms = (
+        REQUESTED_GEN_SOLVERS if args.solver_set == "requested-gen" else CDF_SOLVERS
+    )
+    algorithms = select_algorithms(all_algorithms, args)
+    if args.workers > 1 and args.solver_set != "requested-gen":
+        raise ValueError("--workers > 1 is supported only with --solver-set requested-gen.")
 
     runs_path = args.out_dir / "cdf_runs.csv"
     if args.plot_only:
@@ -4328,7 +4498,10 @@ def main():
             raise FileNotFoundError(f"No existing runs file: {runs_path}")
         runs = pd.read_csv(runs_path)
     else:
-        runs = run_benchmark(args, algorithms, runs_path)
+        if args.workers > 1:
+            runs = run_benchmark_parallel(args, algorithms, runs_path)
+        else:
+            runs = run_benchmark(args, algorithms, runs_path)
     write_outputs(runs, algorithms, args.out_dir)
     print("Wrote:", flush=True)
     for output_name in (
@@ -4340,6 +4513,7 @@ def main():
         "cdf_our_vs_h123.md",
         "cdf_u_g_db.png",
         "cdf_runtime_seconds.png",
+        "pareto_speed_accuracy.png",
         "cdf_u_g_db_h3_submodular_gen.png",
         "cdf_runtime_seconds_h3_submodular_gen.png",
     ):

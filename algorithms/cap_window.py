@@ -66,6 +66,31 @@ def solve_cap_window_gen(
     return x
 
 
+def solve_cap_window_full_gen(V, K, sigma=1.0, P=1.0, random_state=None):
+    """
+    Exhaustive cap-window scan for the general objective.
+
+    This is the same cap-window family as solve_cap_window_gen, but it evaluates
+    every contiguous power window of length K. It is still fast for N=1000,
+    L=2, and gives the exact best candidate inside this H3-style window family.
+    """
+
+    V = np.asarray(V)
+    if V.ndim != 2:
+        raise ValueError("V must be a 2D complex matrix of shape (N, L).")
+    N = V.shape[0]
+    K = int(K)
+    scan_size = max(1, N - K + 1)
+    return solve_cap_window_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+        scan_size=scan_size,
+    )
+
+
 def _candidate_offsets(N, K, scan_size):
     max_offset = N - K
     off_count = max_offset
@@ -141,12 +166,33 @@ def _best_matrix_window_offset(V_ordered, ordered_power, offsets, K, sigma, P):
     scores = np.full(len(offsets), -np.inf, dtype=float)
     valid = caps > 0.0
     if np.any(valid):
-        gram_sq = grams[valid] @ np.swapaxes(grams[valid].conj(), 1, 2)
-        matrices = (
-            (float(P) / caps[valid])[:, None, None] * gram_sq
-            + float(sigma) * np.eye(L, dtype=complex)[None, :, :]
-        )
-        signs, logdets = np.linalg.slogdet(matrices)
-        scores[valid] = np.where(signs > 0, np.real(logdets), -np.inf)
+        if L == 2:
+            scores[valid] = _logdet_scores_l2(grams[valid], caps[valid], sigma, P)
+        else:
+            gram_sq = grams[valid] @ np.swapaxes(grams[valid].conj(), 1, 2)
+            matrices = (
+                (float(P) / caps[valid])[:, None, None] * gram_sq
+                + float(sigma) * np.eye(L, dtype=complex)[None, :, :]
+            )
+            signs, logdets = np.linalg.slogdet(matrices)
+            scores[valid] = np.where(signs > 0, np.real(logdets), -np.inf)
 
     return int(offsets[int(np.argmax(scores))])
+
+
+def _logdet_scores_l2(grams, caps, sigma, P):
+    a = np.real(grams[:, 0, 0])
+    d = np.real(grams[:, 1, 1])
+    b_abs_sq = np.abs(grams[:, 0, 1]) ** 2
+
+    sq00 = a * a + b_abs_sq
+    sq11 = d * d + b_abs_sq
+    off_abs_sq = b_abs_sq * (a + d) ** 2
+    scale = float(P) / caps
+
+    dets = (
+        (float(sigma) + scale * sq00)
+        * (float(sigma) + scale * sq11)
+        - (scale**2) * off_abs_sq
+    )
+    return np.where(dets > 0.0, np.log(dets), -np.inf)
