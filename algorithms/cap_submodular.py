@@ -3,9 +3,8 @@ import heapq
 import numpy as np
 
 
-DEFAULT_SCAN_SIZE = 17
-DEFAULT_POWER_TOLERANCE_FACTOR = 1e-3
 DEFAULT_PORTFOLIO_WINDOW_SCAN_SIZE = 129
+DEFAULT_SCAN_SIZE = DEFAULT_PORTFOLIO_WINDOW_SCAN_SIZE
 DEFAULT_PORTFOLIO_REFINE_CAPS = 1
 
 
@@ -16,74 +15,28 @@ def solve_cap_submodular_gen(
     P=1.0,
     random_state=None,
     scan_size=DEFAULT_SCAN_SIZE,
-    power_tolerance_factor=DEFAULT_POWER_TOLERANCE_FACTOR,
 ):
     """
-    Cap-aware submodular relaxation for the general objective.
+    Fast cap-aware submodular portfolio for the general objective.
 
-    For a fixed row-power cap tau, replacing the active max row power by tau
-    gives the fixed-cap log objective
+    The solver first scans the cap-window family: for each row-power cap tau,
+    it selects the top-power K rows under that cap and scores the true U_G
+    objective. It then runs lazy greedy on the fixed-cap logdet submodular
+    relaxation for the best true-scoring cap.
 
-        epsilon_tau = sqrt(sigma * tau / P),
-        h_tau(A) = log det(sigma I + (P / tau) G_A^2).
-
-    If lambda_i are the eigenvalues of G_A, then h_tau(A) differs by at most
-    L log 2 from L log(sigma) + 2 f_tau(A), where
-
-        f_tau(A) = log det(I + G_A / epsilon_tau).
-
-    The solver greedily maximizes f_tau for a compact set of caps, evaluates
-    each candidate by the true objective, and returns the best true-scoring
-    candidate.
+    This keeps the non-power-only submodular candidate, but avoids spending most
+    of the runtime on caps whose simple window candidate is already weak.
     """
 
-    del random_state
-
-    V = np.asarray(V)
-    if V.ndim != 2:
-        raise ValueError("V must be a 2D complex matrix of shape (N, L).")
-    if not np.iscomplexobj(V):
-        V = V.astype(np.complex128)
-
-    N, L = V.shape
-    K = int(K)
-    if not (0 <= K <= N):
-        raise ValueError("K must satisfy 0 <= K <= N.")
-    if K == 0:
-        return np.zeros(N, dtype=int)
-    if K == N:
-        return np.ones(N, dtype=int)
-    if sigma <= 0.0:
-        raise ValueError("sigma must be positive for the cap-submodular relaxation.")
-    if P <= 0.0:
-        raise ValueError("P must be positive for the cap-submodular relaxation.")
-
-    row_power = np.sum(np.abs(V) ** 2, axis=1).real
-    row_grams = V.conj()[:, :, None] * V[:, None, :]
-    eye = np.eye(L, dtype=complex)
-
-    best_active = None
-    best_score = -np.inf
-
-    for tau in _candidate_thresholds(row_power, K, scan_size):
-        if tau <= 0.0:
-            continue
-        tolerance = _power_tolerance(tau, power_tolerance_factor)
-        pool = np.flatnonzero(row_power <= float(tau) + tolerance)
-        if len(pool) < K:
-            continue
-
-        epsilon = np.sqrt(float(sigma) * float(tau) / float(P))
-        active = _greedy_logdet_cap(V, pool, K, epsilon, eye)
-        score = _true_log_general_score(row_grams, row_power, active, sigma, P, eye)
-        if score > best_score:
-            best_score = score
-            best_active = active
-
-    if best_active is None:
-        best_active = np.zeros(N, dtype=bool)
-        best_active[np.argsort(row_power)[-K:]] = True
-    return best_active.astype(int)
+    return solve_cap_submodular_portfolio_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+        window_scan_size=scan_size,
+        refine_cap_count=DEFAULT_PORTFOLIO_REFINE_CAPS,
+    )
 
 
 def solve_cap_submodular_portfolio_gen(
@@ -241,41 +194,6 @@ def _candidate_thresholds(row_power, K, scan_size):
         thresholds.append(threshold)
 
     return np.asarray(sorted(thresholds), dtype=float)
-
-
-def _power_tolerance(tau, power_tolerance_factor):
-    if power_tolerance_factor <= 0.0:
-        return 0.0
-    return max(float(power_tolerance_factor), abs(float(tau)) * float(power_tolerance_factor))
-
-
-def _greedy_logdet_cap(V, pool, K, epsilon, eye):
-    N = V.shape[0]
-    if len(pool) <= K:
-        active = np.zeros(N, dtype=bool)
-        active[np.asarray(pool[:K], dtype=int)] = True
-        return active
-
-    V_pool = V[pool]
-    selected = np.zeros(len(pool), dtype=bool)
-    inv_matrix = (1.0 / float(epsilon)) * eye.copy()
-
-    for _ in range(K):
-        scores = np.maximum(_leverages_many(V_pool, inv_matrix), 0.0)
-        scores[selected] = -np.inf
-        pos = int(np.argmax(scores))
-        selected[pos] = True
-
-        row = V_pool[pos]
-        vec = row.conj()
-        inv_vec = inv_matrix @ vec
-        denom = max(1.0 + float(np.real(row @ inv_vec)), 1e-12)
-        inv_matrix -= np.outer(inv_vec, inv_vec.conj()) / denom
-        inv_matrix = 0.5 * (inv_matrix + inv_matrix.conj().T)
-
-    active = np.zeros(N, dtype=bool)
-    active[pool[selected]] = True
-    return active
 
 
 def _lazy_greedy_logdet_cap(V, pool, K, epsilon, eye):
