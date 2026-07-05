@@ -6,6 +6,10 @@ model for the requested objective, verifies the selected subset with a direct
 scan, and compares it with the registered heuristic set from
 `utils.solver_sets.SMALL_GUROBI_HEURISTICS`.
 
+For this exact benchmark, `K` is the number of active/kept antennas. Percent
+arguments such as `--active-frac 0.5` are active fractions, not off-percent
+values.
+
 ## Current Heuristic Set
 
 The exact benchmark compares against:

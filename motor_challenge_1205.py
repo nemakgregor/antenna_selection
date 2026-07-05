@@ -1,4 +1,5 @@
 import argparse
+import itertools
 import subprocess
 import sys
 import tarfile
@@ -35,6 +36,8 @@ from algorithms import (
     threshold_window_selection,
     solve_thresholded_logdet_greedy,
 )
+from algorithms.h3_threshold_local import refine_threshold_by_swaps
+from utils.brute_force import brute_force_exact_u_g, contiguous_threshold_window_T
 from utils.solver_sets import MOTOR_SOLVERS
 from utils.data import generate_V
 from utils.evaluation import evaluate_algorithms as evaluate_solver_set
@@ -283,6 +286,56 @@ class TestAntennaSelection(unittest.TestCase):
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
         self.assertEqual(num_active, self.K)
+
+    def test_brute_force_exact_solver_matches_manual_enumeration(self):
+        V = np.array(
+            [
+                [1.0 + 0j, 0.0 + 0j],
+                [0.0 + 0j, 1.0 + 0j],
+                [0.1 + 0j, 0.0 + 0j],
+                [0.0 + 0j, 0.1 + 0j],
+            ]
+        )
+        exact = brute_force_exact_u_g(V, 2, sigma=1.0, P=1.0)
+        manual_best = -np.inf
+        manual_subset = None
+        for subset in itertools.combinations(range(4), 2):
+            x = np.zeros(4, dtype=int)
+            x[list(subset)] = 1
+            u_g = calculate_objectives(V, x, sigma=1.0, P=1.0)[2]
+            if u_g > manual_best:
+                manual_best = u_g
+                manual_subset = subset
+
+        self.assertTrue(exact["completed"])
+        self.assertFalse(exact["timed_out"])
+        self.assertEqual(exact["subset"], manual_subset)
+        self.assertAlmostEqual(exact["u_g"], manual_best)
+        self.assertEqual(contiguous_threshold_window_T(V, exact["subset"]), 0)
+
+    def test_threshold_local_helper_never_decreases_u_g(self):
+        seed = refine_threshold_by_swaps(
+            self.V_L2,
+            self.K,
+            T=5,
+            max_swaps=0,
+            sigma=1.0,
+            P=1.0,
+            candidate_radius=6,
+        )
+        refined = refine_threshold_by_swaps(
+            self.V_L2,
+            self.K,
+            T=5,
+            max_swaps=1,
+            sigma=1.0,
+            P=1.0,
+            candidate_radius=6,
+        )
+        is_valid, num_active = check_constraints(refined["x"], self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+        self.assertGreaterEqual(refined["u_g"], seed["u_g"] - 1e-8)
 
     def test_ug_swap_zero_one_two_three_nonworse(self):
         x0 = solve_h3_strong_weak(self.V_L2, self.K, sigma=1.0, P=1.0)

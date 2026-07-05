@@ -24,6 +24,15 @@ from utils.solver_sets import CDF_SOLVERS, REQUESTED_GEN_SOLVERS
 from utils.data import generate_v_from_rng, generate_v_profile_from_rng
 from utils.evaluation import evaluate_solver
 from utils.io import atomic_write_csv
+from utils.local_threshold_analysis import run_local_threshold_exact_analysis
+from utils.local_threshold_large_analysis import (
+    run_large_cyclic_honest_local_analysis,
+    run_large_cyclic_local_analysis,
+)
+from utils.local_threshold_real_off_analysis import (
+    run_active_k_cyclic_local_exact_analysis,
+    run_real_off_cyclic_local_exact_analysis,
+)
 from utils.plotting import use_agg_backend
 from utils.reporting import format_number_slug
 from visualization.algorithm_comparison import write_algorithm_comparison_plots
@@ -154,6 +163,59 @@ def parse_args():
         help="Run focused cyclic best-T analysis with 0/1/2/3 U_G swaps.",
     )
     parser.add_argument(
+        "--threshold-local-exact-analysis",
+        action="store_true",
+        help="Compare saved exact small cases against threshold local-search refinements.",
+    )
+    parser.add_argument(
+        "--threshold-real-off-cyclic-local-exact-analysis",
+        action="store_true",
+        help="Run exact cyclic-threshold local-search analysis with real off-percent semantics.",
+    )
+    parser.add_argument(
+        "--threshold-active-k-cyclic-local-exact-analysis",
+        action="store_true",
+        help="Run exact cyclic-threshold local-search analysis with active-K percentages.",
+    )
+    parser.add_argument(
+        "--threshold-large-cyclic-local-analysis",
+        action="store_true",
+        help="Run large-N cyclic-threshold local-search analysis without brute-force exact.",
+    )
+    parser.add_argument(
+        "--threshold-large-cyclic-honest-local-analysis",
+        action="store_true",
+        help="Run large-N cyclic-threshold analysis with honest all-inactive one-swap search.",
+    )
+    parser.add_argument(
+        "--exact-source-dir",
+        type=Path,
+        default=Path(
+            "results/threshold_exact_gaussian_L2_N8_12_16_20_24_Kpct25_to_50_s100"
+        ),
+        help="Exact-study result directory used by --threshold-local-exact-analysis.",
+    )
+    parser.add_argument(
+        "--N-values",
+        type=int,
+        nargs="+",
+        default=[8, 12, 16, 20, 24],
+        help="N grid for local threshold exact analysis modes.",
+    )
+    parser.add_argument(
+        "--K-pcts",
+        type=float,
+        nargs="+",
+        default=[25.0, 50.0],
+        help="Active-K percentages for exact local threshold analysis modes.",
+    )
+    parser.add_argument(
+        "--exact-time-limit",
+        type=float,
+        default=120.0,
+        help="Per-case brute-force exact enumeration guard in seconds.",
+    )
+    parser.add_argument(
         "--baseline-dir",
         type=Path,
         default=None,
@@ -164,6 +226,39 @@ def parse_args():
 
 
 def default_out_dir(args):
+    if args.threshold_large_cyclic_honest_local_analysis:
+        k_label = "_".join(str(value) for value in args.K_values or ["required"])
+        profile_label = "_".join(args.data_profiles)
+        return Path(
+            f"results/local_threshold_large_honest_{profile_label}_L{args.L}_"
+            f"N{args.N}_K{k_label}_s{args.samples}"
+        )
+
+    if args.threshold_large_cyclic_local_analysis:
+        k_label = "_".join(str(value) for value in args.K_values or ["required"])
+        profile_label = "_".join(args.data_profiles)
+        return Path(
+            f"results/local_threshold_large_{profile_label}_L{args.L}_"
+            f"N{args.N}_K{k_label}_s{args.samples}"
+        )
+
+    if args.threshold_active_k_cyclic_local_exact_analysis:
+        return Path(
+            "results/local_threshold_exact_gauss_L2_N8_12_16_20_24_"
+            "activeKpct25_to_75_cyclic_s100"
+        )
+
+    if args.threshold_real_off_cyclic_local_exact_analysis:
+        return Path(
+            "results/local_threshold_exact_gauss_L2_N8_12_16_20_24_"
+            "offpct25_50_cyclic_s100"
+        )
+
+    if args.threshold_local_exact_analysis:
+        return Path(
+            "results/local_threshold_exact_gauss_L2_N8_12_16_20_Kpct25_to_50_s100"
+        )
+
     if args.K_values is not None:
         off_label = "K" + "_".join(str(value) for value in args.K_values)
     elif args.off_counts is not None:
@@ -2699,8 +2794,201 @@ def _archive_csv_files(out_dir, csv_names):
             path.unlink()
 
 
+def _ensure_single_experiment_mode(args):
+    modes = [
+        args.ug_swap_seed_comparison,
+        args.cyclic_best_3swap_analysis,
+        args.threshold_local_exact_analysis,
+        args.threshold_real_off_cyclic_local_exact_analysis,
+        args.threshold_active_k_cyclic_local_exact_analysis,
+        args.threshold_large_cyclic_local_analysis,
+        args.threshold_large_cyclic_honest_local_analysis,
+    ]
+    if sum(bool(mode) for mode in modes) > 1:
+        raise ValueError("Use only one experiment mode flag at a time.")
+
+
+def _print_existing_outputs(out_dir, output_names, docs_path=None):
+    print("Wrote:", flush=True)
+    for output_name in output_names:
+        output_path = out_dir / output_name
+        if output_path.exists():
+            print(f"  {output_path}", flush=True)
+    if docs_path is not None and docs_path.exists():
+        print(f"  {docs_path}", flush=True)
+
+
+def _run_threshold_analysis_mode(args):
+    if args.threshold_large_cyclic_honest_local_analysis:
+        if args.K_values is None:
+            raise ValueError(
+                "--threshold-large-cyclic-honest-local-analysis requires --K-values."
+            )
+        docs_path = Path("docs/local_threshold_large_honest_cyclic_report.md")
+        run_large_cyclic_honest_local_analysis(
+            out_dir=args.out_dir,
+            N=args.N,
+            K_values=args.K_values,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            docs_path=docs_path,
+        )
+        _print_existing_outputs(
+            args.out_dir,
+            (
+                "csv_data.tar.gz",
+                "local_threshold_large_honest_report.md",
+                "large_raw_u_g_cdf_by_K.png",
+                "large_fraction_cyclic_seed_cdf_by_K.png",
+                "large_fraction_best_observed_cdf_by_K.png",
+                "large_mean_fraction_cyclic_seed_by_K.png",
+                "large_best_cyclic_T_boxplot.png",
+                "large_best_cyclic_T_over_N.png",
+                "large_runtime_by_method.png",
+            ),
+            docs_path=docs_path,
+        )
+        return True
+
+    if args.threshold_large_cyclic_local_analysis:
+        if args.K_values is None:
+            raise ValueError("--threshold-large-cyclic-local-analysis requires --K-values.")
+        docs_path = Path("docs/local_threshold_large_cyclic_report.md")
+        run_large_cyclic_local_analysis(
+            out_dir=args.out_dir,
+            N=args.N,
+            K_values=args.K_values,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            docs_path=docs_path,
+        )
+        _print_existing_outputs(
+            args.out_dir,
+            (
+                "csv_data.tar.gz",
+                "local_threshold_large_report.md",
+                "large_raw_u_g_cdf_by_K.png",
+                "large_fraction_cyclic_seed_cdf_by_K.png",
+                "large_fraction_best_observed_cdf_by_K.png",
+                "large_mean_fraction_cyclic_seed_by_K.png",
+                "large_best_cyclic_T_boxplot.png",
+                "large_best_cyclic_T_over_N.png",
+                "large_runtime_by_method.png",
+            ),
+            docs_path=docs_path,
+        )
+        return True
+
+    if args.threshold_active_k_cyclic_local_exact_analysis:
+        docs_path = Path("docs/local_threshold_active_k_cyclic_report.md")
+        run_active_k_cyclic_local_exact_analysis(
+            out_dir=args.out_dir,
+            n_values=args.N_values,
+            active_pcts=args.K_pcts,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            exact_source_dir=args.exact_source_dir,
+            exact_time_limit=args.exact_time_limit,
+            docs_path=docs_path,
+        )
+        _print_existing_outputs(
+            args.out_dir,
+            (
+                "csv_data.tar.gz",
+                "local_threshold_active_k_report.md",
+                "active_k_raw_u_g_cdf_by_requested_active_pct.png",
+                "active_k_fraction_exact_cdf.png",
+                "active_k_mean_fraction_by_requested_active_pct.png",
+                "active_k_exact_recovery_by_requested_active_pct.png",
+                "active_k_best_cyclic_start_hist.png",
+                "active_k_failure_diagnostics.png",
+                "active_k_runtime_by_method.png",
+            ),
+            docs_path=docs_path,
+        )
+        return True
+
+    if args.threshold_real_off_cyclic_local_exact_analysis:
+        docs_path = Path("docs/local_threshold_real_off_cyclic_report.md")
+        run_real_off_cyclic_local_exact_analysis(
+            out_dir=args.out_dir,
+            n_values=args.N_values,
+            off_pcts=args.off_pcts,
+            profiles=args.data_profiles,
+            generator_seeds=args.generator_seeds,
+            samples=args.samples,
+            L=args.L,
+            sigma=args.sigma,
+            P=args.P,
+            exact_source_dir=args.exact_source_dir,
+            exact_time_limit=args.exact_time_limit,
+            docs_path=docs_path,
+        )
+        _print_existing_outputs(
+            args.out_dir,
+            (
+                "csv_data.tar.gz",
+                "local_threshold_real_off_report.md",
+                "real_off_raw_u_g_cdf_by_off_pct.png",
+                "real_off_fraction_exact_cdf.png",
+                "real_off_mean_fraction_by_off_pct.png",
+                "real_off_exact_recovery_by_off_pct.png",
+                "real_off_best_cyclic_start_hist.png",
+                "real_off_failure_diagnostics.png",
+                "real_off_runtime_by_method.png",
+            ),
+            docs_path=docs_path,
+        )
+        return True
+
+    if args.threshold_local_exact_analysis:
+        docs_path = Path("docs/local_threshold_exact_gauss_report.md")
+        run_local_threshold_exact_analysis(
+            exact_dir=args.exact_source_dir,
+            out_dir=args.out_dir,
+            docs_path=docs_path,
+            n_values=args.N_values,
+            k_pcts=args.K_pcts,
+            profiles=args.data_profiles,
+        )
+        _print_existing_outputs(
+            args.out_dir,
+            (
+                "local_threshold_runs.csv",
+                "local_threshold_summary.csv",
+                "local_threshold_failure_cases.csv",
+                "local_threshold_diagnostics.csv",
+                "local_threshold_exact_gauss_report.md",
+                "local_threshold_raw_u_g_cdf_by_k_pct.png",
+                "local_threshold_fraction_exact_cdf.png",
+                "local_threshold_mean_fraction_by_active_pct.png",
+                "local_threshold_exact_rate_by_active_pct.png",
+                "local_threshold_seed_dependence.png",
+                "local_threshold_failure_diagnostics.png",
+                "local_threshold_runtime_by_N_K.png",
+            ),
+            docs_path=docs_path,
+        )
+        return True
+
+    return False
+
+
 def main():
     args = parse_args()
+    _ensure_single_experiment_mode(args)
     args.off_cases = build_off_cases(args)
     if args.cyclic_best_3swap_analysis:
         args.out_dir = args.out_dir or default_cyclic_3swap_out_dir(args)
@@ -2714,6 +3002,8 @@ def main():
 
     args.out_dir = args.out_dir or default_out_dir(args)
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    if _run_threshold_analysis_mode(args):
+        return
 
     all_algorithms = (
         REQUESTED_GEN_SOLVERS if args.solver_set == "requested-gen" else CDF_SOLVERS
