@@ -15,17 +15,24 @@ except ImportError:
 from algorithms import (
     best_cyclic_threshold_window,
     cap_submodular_seed_gen,
+    solve_cap_window_full_gen,
     frame_portfolio_seed_gen,
     refine_selection_by_ug_swaps_steps,
+    solve_h3,
     solve_h3_strong_weak,
     threshold_window_selection,
 )
+from algorithms.h3_threshold_local import refine_selection_by_swaps
+from utils.brute_force import contiguous_threshold_window_T
 from utils.solver_sets import CDF_SOLVERS, REQUESTED_GEN_SOLVERS
 from utils.data import generate_v_from_rng, generate_v_profile_from_rng
 from utils.evaluation import evaluate_solver
 from utils.io import atomic_write_csv
 from utils.local_threshold_analysis import run_local_threshold_exact_analysis
 from utils.local_threshold_large_analysis import (
+    _candidate_radius,
+    _cyclic_boundary_add_pool,
+    _linear_boundary_add_pool,
     run_large_cyclic_honest_local_analysis,
     run_large_cyclic_local_analysis,
 )
@@ -71,6 +78,13 @@ def parse_args():
     parser.add_argument("--N", type=int, default=1000)
     parser.add_argument("--L", type=int, default=2)
     parser.add_argument(
+        "--L-values",
+        type=int,
+        nargs="+",
+        default=None,
+        help="Optional L grid for unified local-swap comparisons.",
+    )
+    parser.add_argument(
         "--samples",
         type=int,
         default=1000,
@@ -105,6 +119,13 @@ def parse_args():
         help="Explicit active antenna limits. Overrides --off-pcts.",
     )
     parser.add_argument("--sigma", type=float, default=1.0)
+    parser.add_argument(
+        "--sigmas",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Optional sigma grid for unified local-swap comparisons.",
+    )
     parser.add_argument("--P", type=float, default=1.0)
     parser.add_argument(
         "--algorithms",
@@ -161,6 +182,16 @@ def parse_args():
         "--cyclic-best-3swap-analysis",
         action="store_true",
         help="Run focused cyclic best-T analysis with 0/1/2/3 U_G swaps.",
+    )
+    parser.add_argument(
+        "--unified-local-swap-comparison",
+        action="store_true",
+        help="Run one 0/1-swap comparison over all requested seed families and data profiles.",
+    )
+    parser.add_argument(
+        "--compact-runs",
+        action="store_true",
+        help="For unified local-swap runs, omit subset and swap-history columns.",
     )
     parser.add_argument(
         "--threshold-local-exact-analysis",
@@ -226,6 +257,25 @@ def parse_args():
 
 
 def default_out_dir(args):
+    if args.unified_local_swap_comparison:
+        if args.K_values is not None:
+            k_label = "K" + "_".join(str(value) for value in args.K_values)
+        elif args.off_counts is not None:
+            k_label = "offcount" + "_".join(str(value) for value in args.off_counts)
+        else:
+            k_label = "off" + "_".join(format_number_slug(value) for value in args.off_pcts)
+        profile_label = "_".join(args.data_profiles)
+        seed_label = "_".join(str(value) for value in args.generator_seeds)
+        l_values = args.L_values if args.L_values is not None else [args.L]
+        sigma_values = args.sigmas if args.sigmas is not None else [args.sigma]
+        l_label = "_".join(str(value) for value in l_values)
+        sigma_label = "_".join(format_number_slug(value) for value in sigma_values)
+        return Path(
+            f"results/unified_local_swap_{profile_label}_L{l_label}_"
+            f"N{args.N}_{k_label}_sigma{sigma_label}_"
+            f"seeds{seed_label}_{args.samples}samples"
+        )
+
     if args.threshold_large_cyclic_honest_local_analysis:
         k_label = "_".join(str(value) for value in args.K_values or ["required"])
         profile_label = "_".join(args.data_profiles)
@@ -2794,8 +2844,571 @@ def _archive_csv_files(out_dir, csv_names):
             path.unlink()
 
 
+UNIFIED_LOCAL_SWAP_FAMILIES = (
+    "StrongWeak",
+    "H3Threshold-T0.05N-Gen",
+    "H3Threshold-CyclicBestT-Gen",
+    "CapWindowFull-Gen",
+    "CapSubmod-Gen",
+)
+
+
+def _unified_l_values(args):
+    values = args.L_values if args.L_values is not None else [args.L]
+    values = [int(value) for value in values]
+    if any(value <= 0 for value in values):
+        raise ValueError("All L values must be positive.")
+    return values
+
+
+def _unified_sigma_values(args):
+    values = args.sigmas if args.sigmas is not None else [args.sigma]
+    values = [float(value) for value in values]
+    if any(value <= 0.0 for value in values):
+        raise ValueError("All sigma values must be positive.")
+    return values
+
+
+def run_unified_local_swap_comparison(args):
+    if int(args.workers) != 1:
+        raise ValueError(
+            "--unified-local-swap-comparison is intentionally sequential; use --workers 1."
+        )
+
+    out_dir = args.out_dir
+    out_dir.mkdir(parents=True, exist_ok=True)
+    runs_path = out_dir / "unified_local_swap_runs.csv"
+    existing, completed = (
+        _load_existing_unified_runs(runs_path) if args.resume else (pd.DataFrame(), set())
+    )
+    rows = existing.to_dict("records") if not existing.empty else []
+    l_values = _unified_l_values(args)
+    sigma_values = _unified_sigma_values(args)
+    total_runs = (
+        len(l_values)
+        * len(sigma_values)
+        * len(args.data_profiles)
+        * len(args.generator_seeds)
+        * int(args.samples)
+        * len(args.off_cases)
+        * len(UNIFIED_LOCAL_SWAP_FAMILIES)
+        * 2
+    )
+    progress = (
+        tqdm(
+            total=total_runs,
+            initial=min(len(completed), total_runs),
+            unit="run",
+            dynamic_ncols=True,
+        )
+        if tqdm is not None
+        else None
+    )
+    new_since_checkpoint = 0
+    total_new = 0
+
+    try:
+        for L in l_values:
+            for profile in args.data_profiles:
+                for generator_seed in args.generator_seeds:
+                    rng = np.random.RandomState(int(generator_seed))
+                    for sample in range(int(args.samples)):
+                        V = generate_v_profile_from_rng(rng, args.N, L, profile=profile)
+                        for off_case in args.off_cases:
+                            K = int(off_case["K"])
+                            off_pct = float(off_case["off_pct"])
+                            for sigma in sigma_values:
+                                case_base = {
+                                    "data_profile": str(profile),
+                                    "generator_seed": int(generator_seed),
+                                    "sample": int(sample),
+                                    "N": int(args.N),
+                                    "L": int(L),
+                                    "K": K,
+                                    "K_active": K,
+                                    "K_off": int(args.N - K),
+                                    "off_pct": off_pct,
+                                    "active_pct": float(100.0 - off_pct),
+                                    "sigma": float(sigma),
+                                    "P": float(args.P),
+                                }
+                                seed_specs = _unified_seed_specs_for_case(V, K, args, case_base)
+                                for seed in seed_specs:
+                                    for max_swaps in (0, 1):
+                                        method = f"{seed['seed_family']}+{int(max_swaps)}swap"
+                                        key = _unified_run_key(case_base, method)
+                                        if key in completed:
+                                            continue
+                                        row = _unified_local_swap_row(
+                                            V,
+                                            case_base,
+                                            seed,
+                                            max_swaps,
+                                            include_selection_details=not args.compact_runs,
+                                        )
+                                        rows.append(row)
+                                        completed.add(key)
+                                        total_new += 1
+                                        new_since_checkpoint += 1
+                                        message = (
+                                            f"L={L}, sigma={sigma:g}, profile={profile}, "
+                                            f"seed={generator_seed}, sample={sample}, "
+                                            f"off={off_pct:g}%, method={row['method']}"
+                                        )
+                                        if progress is not None:
+                                            progress.set_postfix_str(message)
+                                            progress.update(1)
+                                        else:
+                                            done = min(len(completed), total_runs)
+                                            print(
+                                                f"[{done}/{total_runs}] {message}",
+                                                flush=True,
+                                            )
+                                        if (
+                                            args.checkpoint_every
+                                            and new_since_checkpoint >= args.checkpoint_every
+                                        ):
+                                            atomic_write_csv(pd.DataFrame(rows), runs_path)
+                                            new_since_checkpoint = 0
+    finally:
+        if progress is not None:
+            progress.close()
+
+    runs = _attach_unified_best_observed(pd.DataFrame(rows))
+    summary = _build_unified_local_swap_summary(runs)
+    overall = _build_unified_local_swap_overall_summary(summary)
+
+    atomic_write_csv(runs, runs_path)
+    atomic_write_csv(summary, out_dir / "unified_local_swap_summary.csv")
+    atomic_write_csv(overall, out_dir / "unified_local_swap_overall_summary.csv")
+    _write_unified_local_swap_report(runs, summary, overall, out_dir, args)
+    print(
+        f"Completed {total_new} new unified local-swap runs; "
+        f"{len(rows)} total rows in {runs_path}.",
+        flush=True,
+    )
+
+
+def _load_existing_unified_runs(path):
+    if not path.exists():
+        return pd.DataFrame(), set()
+    runs = pd.read_csv(path)
+    runs = runs.drop(
+        columns=[
+            "best_observed_u_g",
+            "fraction_best_observed_u_g",
+            "is_best_observed",
+        ],
+        errors="ignore",
+    )
+    completed = {_unified_run_key(row, row["method"]) for row in runs.to_dict("records")}
+    return runs, completed
+
+
+def _unified_run_key(case_or_row, method):
+    return (
+        str(case_or_row["data_profile"]),
+        int(case_or_row["generator_seed"]),
+        int(case_or_row["sample"]),
+        int(case_or_row["N"]),
+        int(case_or_row["L"]),
+        int(case_or_row["K"]),
+        _canonical_float(case_or_row["off_pct"]),
+        _canonical_float(case_or_row["sigma"]),
+        _canonical_float(case_or_row["P"]),
+        str(method),
+    )
+
+
+def _canonical_float(value):
+    return f"{float(value):.12g}"
+
+
+def _unified_seed_specs_for_case(V, K, args, case_base):
+    N = int(args.N)
+    sigma = float(case_base["sigma"])
+    P = float(case_base["P"])
+    row_power = np.sum(np.abs(V) ** 2, axis=1).real
+    order = np.argsort(row_power)[::-1]
+    radius = _candidate_radius(K, None)
+    specs = []
+
+    def add_spec(
+        seed_family,
+        x,
+        seed_position,
+        candidate_kind,
+        seed_elapsed_seconds,
+        seed_candidate_count=np.nan,
+        candidate_pool=None,
+        candidate_pool_kind="rank_neighborhood",
+    ):
+        specs.append(
+            {
+                "seed_family": seed_family,
+                "seed_position": seed_position,
+                "seed_candidate_count": seed_candidate_count,
+                "candidate_kind": candidate_kind,
+                "candidate_radius": radius,
+                "candidate_pool": candidate_pool,
+                "candidate_pool_kind": candidate_pool_kind,
+                "seed_elapsed_seconds": float(seed_elapsed_seconds),
+                "x": np.asarray(x, dtype=int),
+            }
+        )
+
+    T_005 = int(np.clip(round(0.05 * N), 0, max(0, N - K)))
+    started_at = time.perf_counter()
+    h3_t005_x = solve_h3(
+        V,
+        K,
+        target_obj="gen",
+        sigma=sigma,
+        P=P,
+        t_tests=(T_005,),
+        include_phase_nulling=False,
+    )
+    h3_t005_elapsed = time.perf_counter() - started_at
+    h3_t005_position = contiguous_threshold_window_T(V, np.flatnonzero(h3_t005_x))
+    h3_t005_pool = _linear_pool_or_none(order, h3_t005_x, h3_t005_position, K, radius)
+    add_spec(
+        "H3Threshold-T0.05N-Gen",
+        h3_t005_x,
+        T_005 if h3_t005_position is None else int(h3_t005_position),
+        "h3_threshold_T0p05N",
+        h3_t005_elapsed,
+        seed_candidate_count=1 + int(0 < T_005 <= N - K),
+        candidate_pool=h3_t005_pool,
+        candidate_pool_kind="linear_boundary" if h3_t005_pool is not None else "rank_neighborhood",
+    )
+
+    started_at = time.perf_counter()
+    cyclic = best_cyclic_threshold_window(V, K, sigma=sigma, P=P)
+    cyclic_elapsed = time.perf_counter() - started_at
+    cyclic_pool = _cyclic_boundary_add_pool(order, cyclic["x"], int(cyclic["T"]), K, radius)
+    add_spec(
+        "H3Threshold-CyclicBestT-Gen",
+        cyclic["x"],
+        int(cyclic["T"]),
+        "cyclic_threshold_window",
+        cyclic_elapsed,
+        seed_candidate_count=int(cyclic["candidate_count"]),
+        candidate_pool=cyclic_pool,
+        candidate_pool_kind="cyclic_boundary",
+    )
+
+    random_state = solver_random_state(
+        case_base["generator_seed"],
+        case_base["sample"],
+        K,
+        UNIFIED_LOCAL_SWAP_FAMILIES.index("CapWindowFull-Gen"),
+    )
+    started_at = time.perf_counter()
+    cap_window_full_x = solve_cap_window_full_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+    )
+    cap_window_full_elapsed = time.perf_counter() - started_at
+    cap_window_full_position = contiguous_threshold_window_T(
+        V,
+        np.flatnonzero(cap_window_full_x),
+    )
+    cap_window_full_pool = _linear_pool_or_none(
+        order,
+        cap_window_full_x,
+        cap_window_full_position,
+        K,
+        radius,
+    )
+    add_spec(
+        "CapWindowFull-Gen",
+        cap_window_full_x,
+        cap_window_full_position,
+        "cap_window_full",
+        cap_window_full_elapsed,
+        candidate_pool=cap_window_full_pool,
+        candidate_pool_kind="linear_boundary"
+        if cap_window_full_pool is not None
+        else "rank_neighborhood",
+    )
+
+    random_state = solver_random_state(
+        case_base["generator_seed"],
+        case_base["sample"],
+        K,
+        UNIFIED_LOCAL_SWAP_FAMILIES.index("CapSubmod-Gen"),
+    )
+    started_at = time.perf_counter()
+    cap_submod_x = cap_submodular_seed_gen(
+        V,
+        K,
+        sigma=sigma,
+        P=P,
+        random_state=random_state,
+    )
+    add_spec(
+        "CapSubmod-Gen",
+        cap_submod_x,
+        np.nan,
+        "cap_submodular",
+        time.perf_counter() - started_at,
+    )
+
+    started_at = time.perf_counter()
+    strong_x = solve_h3_strong_weak(V, K, sigma=sigma, P=P)
+    strong_elapsed = time.perf_counter() - started_at
+    off_count = int(args.N - K)
+    strong_position = off_count - off_count // 2
+    strong_pool = _linear_boundary_add_pool(order, strong_x, strong_position, K, radius)
+    add_spec(
+        "StrongWeak",
+        strong_x,
+        strong_position,
+        "strong_weak",
+        strong_elapsed,
+        seed_candidate_count=1,
+        candidate_pool=strong_pool,
+        candidate_pool_kind="linear_boundary",
+    )
+    return specs
+
+
+def _linear_pool_or_none(order, x, seed_position, K, radius):
+    if seed_position is None or not np.isfinite(seed_position):
+        return None
+    return _linear_boundary_add_pool(order, x, int(seed_position), K, radius)
+
+
+def _unified_local_swap_row(
+    V,
+    case_base,
+    seed,
+    max_swaps,
+    include_selection_details=True,
+):
+    result = refine_selection_by_swaps(
+        V,
+        seed["x"],
+        max_swaps=int(max_swaps),
+        sigma=float(case_base["sigma"]),
+        P=float(case_base["P"]),
+        candidate_radius=seed["candidate_radius"],
+        candidate_pool=seed["candidate_pool"],
+        seed_position=0 if pd.isna(seed["seed_position"]) else int(seed["seed_position"]),
+    )
+    local_elapsed = float(result["elapsed_seconds"])
+    total_elapsed = float(seed["seed_elapsed_seconds"]) + local_elapsed
+    row = {
+        **case_base,
+        "method": f"{seed['seed_family']}+{int(max_swaps)}swap",
+        "seed_family": seed["seed_family"],
+        "max_swaps": int(max_swaps),
+        "seed_position": seed["seed_position"],
+        "seed_candidate_count": seed["seed_candidate_count"],
+        "seed_elapsed_seconds": float(seed["seed_elapsed_seconds"]),
+        "candidate_kind": seed["candidate_kind"]
+        if int(max_swaps) == 0
+        else f"{seed['candidate_kind']}_local_swap",
+        "candidate_pool_kind": seed["candidate_pool_kind"],
+        "candidate_radius": int(result["candidate_radius"]),
+        "add_candidate_count": int(result["add_candidate_count"]),
+        "evaluated_swap_count": int(result["evaluated_swap_count"]),
+        "candidate_count": int(result["candidate_count"]),
+        "swaps_applied": int(result["swaps_applied"]),
+        "active_count": int(np.sum(result["x"])),
+        "initial_u_bf": float(result["initial_u_bf"]),
+        "initial_u_i": float(result["initial_u_i"]),
+        "initial_u_g": float(result["initial_u_g"]),
+        "u_bf": float(result["u_bf"]),
+        "u_i": float(result["u_i"]),
+        "u_g": float(result["u_g"]),
+        "u_g_db": 10.0 * np.log10(max(float(result["u_g"]), np.finfo(float).tiny)),
+        "local_elapsed_seconds": local_elapsed,
+        "total_elapsed_seconds": total_elapsed,
+    }
+    if include_selection_details:
+        row.update(
+            {
+                "initial_subset": _subset_to_string(result["initial_subset"]),
+                "subset": _subset_to_string(result["subset"]),
+                "swap_history": result["swap_history"],
+            }
+        )
+    return row
+
+
+def _attach_unified_best_observed(runs):
+    if runs.empty:
+        return runs
+    case_keys = [
+        "data_profile",
+        "generator_seed",
+        "sample",
+        "N",
+        "L",
+        "K",
+        "off_pct",
+        "sigma",
+        "P",
+    ]
+    runs = runs.copy()
+    runs["best_observed_u_g"] = runs.groupby(case_keys)["u_g"].transform("max")
+    runs["fraction_best_observed_u_g"] = (
+        runs["u_g"].astype(float) / runs["best_observed_u_g"].astype(float)
+    )
+    runs["is_best_observed"] = (
+        runs["u_g"].astype(float) >= runs["best_observed_u_g"].astype(float) - 1e-9
+    )
+    return runs
+
+
+def _build_unified_local_swap_summary(runs):
+    if runs.empty:
+        return pd.DataFrame()
+
+    def q(value):
+        return lambda data: data.quantile(value)
+
+    return (
+        runs.groupby(
+            [
+                "data_profile",
+                "N",
+                "L",
+                "off_pct",
+                "K",
+                "sigma",
+                "P",
+                "seed_family",
+                "max_swaps",
+                "method",
+            ],
+            as_index=False,
+        )
+        .agg(
+            cases=("u_g", "count"),
+            u_g_mean=("u_g", "mean"),
+            u_g_p05=("u_g", q(0.05)),
+            u_g_p50=("u_g", q(0.50)),
+            u_g_p95=("u_g", q(0.95)),
+            u_g_db_mean=("u_g_db", "mean"),
+            u_g_db_p05=("u_g_db", q(0.05)),
+            u_g_db_p50=("u_g_db", q(0.50)),
+            u_g_db_p95=("u_g_db", q(0.95)),
+            fraction_best_observed_mean=("fraction_best_observed_u_g", "mean"),
+            fraction_best_observed_p05=("fraction_best_observed_u_g", q(0.05)),
+            fraction_best_observed_p50=("fraction_best_observed_u_g", q(0.50)),
+            best_observed_rate=("is_best_observed", "mean"),
+            seed_elapsed_seconds_mean=("seed_elapsed_seconds", "mean"),
+            local_elapsed_seconds_mean=("local_elapsed_seconds", "mean"),
+            total_elapsed_seconds_mean=("total_elapsed_seconds", "mean"),
+            add_candidate_count_mean=("add_candidate_count", "mean"),
+            evaluated_swap_count_mean=("evaluated_swap_count", "mean"),
+            swaps_applied_mean=("swaps_applied", "mean"),
+        )
+        .sort_values(
+            ["data_profile", "L", "sigma", "off_pct", "max_swaps", "seed_family"]
+        )
+    )
+
+
+def _build_unified_local_swap_overall_summary(summary):
+    if summary.empty:
+        return pd.DataFrame()
+    rows = []
+    for (seed_family, max_swaps, method), group in summary.groupby(
+        ["seed_family", "max_swaps", "method"],
+        sort=True,
+    ):
+        weights = group["cases"].astype(float)
+        total = float(weights.sum())
+        row = {
+            "seed_family": seed_family,
+            "max_swaps": int(max_swaps),
+            "method": method,
+            "cases": int(total),
+        }
+        for col in (
+            "u_g_mean",
+            "u_g_db_mean",
+            "fraction_best_observed_mean",
+            "best_observed_rate",
+            "seed_elapsed_seconds_mean",
+            "local_elapsed_seconds_mean",
+            "total_elapsed_seconds_mean",
+            "add_candidate_count_mean",
+            "evaluated_swap_count_mean",
+            "swaps_applied_mean",
+        ):
+            row[col] = float(np.average(group[col].astype(float), weights=weights))
+        rows.append(row)
+    return pd.DataFrame(rows).sort_values(
+        ["fraction_best_observed_mean", "best_observed_rate"],
+        ascending=[False, False],
+    )
+
+
+def _write_unified_local_swap_report(runs, summary, overall, out_dir, args):
+    l_values = _unified_l_values(args)
+    sigma_values = _unified_sigma_values(args)
+    lines = [
+        "# Unified Local Swap Comparison",
+        "",
+        f"- N: {args.N}",
+        f"- L values: {', '.join(str(value) for value in l_values)}",
+        f"- sigma values: {', '.join(format_number_slug(value) for value in sigma_values)}",
+        f"- off-pcts: {', '.join(format_number_slug(case['off_pct']) for case in args.off_cases)}",
+        f"- samples: {args.samples}",
+        f"- generator seeds: {', '.join(str(value) for value in args.generator_seeds)}",
+        f"- data profiles: {', '.join(args.data_profiles)}",
+        "- workers: 1 sequential run",
+        f"- compact runs: {bool(args.compact_runs)}",
+        "- local search: existing `algorithms.h3_threshold_local.refine_selection_by_swaps`.",
+        "- local swap depths: `0` and `1`.",
+        "- default candidate radius: `max(8, ceil(0.05K))`.",
+        "",
+        "## Seed Families",
+        "",
+        *[f"- `{name}`" for name in UNIFIED_LOCAL_SWAP_FAMILIES],
+        "",
+        "## Overall Summary",
+        "",
+        _markdown_table(
+            overall,
+            [
+                ("method", "method"),
+                ("cases", "cases"),
+                ("fraction_best_observed_mean", "mean fraction best"),
+                ("best_observed_rate", "best rate"),
+                ("u_g_db_mean", "mean U_G dB"),
+                ("total_elapsed_seconds_mean", "mean total seconds"),
+                ("add_candidate_count_mean", "mean add candidates"),
+                ("evaluated_swap_count_mean", "mean evaluated swaps"),
+            ],
+        ),
+        "",
+        "## Artifacts",
+        "",
+        "- `unified_local_swap_runs.csv`",
+        "- `unified_local_swap_summary.csv`",
+        "- `unified_local_swap_overall_summary.csv`",
+    ]
+    (Path(out_dir) / "unified_local_swap_report.md").write_text(
+        "\n".join(lines) + "\n",
+        encoding="utf-8",
+    )
+
+
+def _subset_to_string(subset):
+    return " ".join(str(int(value)) for value in subset)
+
+
 def _ensure_single_experiment_mode(args):
     modes = [
+        args.unified_local_swap_comparison,
         args.ug_swap_seed_comparison,
         args.cyclic_best_3swap_analysis,
         args.threshold_local_exact_analysis,
@@ -3002,6 +3615,10 @@ def main():
 
     args.out_dir = args.out_dir or default_out_dir(args)
     args.out_dir.mkdir(parents=True, exist_ok=True)
+    if args.unified_local_swap_comparison:
+        run_unified_local_swap_comparison(args)
+        return
+
     if _run_threshold_analysis_mode(args):
         return
 

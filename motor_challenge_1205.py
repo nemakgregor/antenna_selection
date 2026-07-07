@@ -8,6 +8,7 @@ import unittest
 from pathlib import Path
 
 import numpy as np
+import pandas as pd
 
 from algorithms import (
     best_cyclic_threshold_window,
@@ -426,6 +427,46 @@ class TestAntennaSelection(unittest.TestCase):
             self.assertTrue(archive_path.exists())
             with tarfile.open(archive_path, "r:gz") as archive:
                 self.assertIn("ug_swap_seed_runs.csv", archive.getnames())
+
+    def test_unified_local_swap_comparison_smoke(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            out_dir = Path(tmp) / "unified_local_swap"
+            subprocess.run(
+                [
+                    sys.executable,
+                    "-m",
+                    "experiments.algorithm_comparison",
+                    "--unified-local-swap-comparison",
+                    "--N",
+                    "20",
+                    "--L",
+                    "2",
+                    "--off-pcts",
+                    "50",
+                    "--samples",
+                    "1",
+                    "--generator-seeds",
+                    "42",
+                    "--data-profiles",
+                    "gaussian",
+                    "--workers",
+                    "1",
+                    "--out-dir",
+                    str(out_dir),
+                ],
+                check=True,
+            )
+            runs_path = out_dir / "unified_local_swap_runs.csv"
+            summary_path = out_dir / "unified_local_swap_summary.csv"
+            self.assertTrue(runs_path.exists())
+            self.assertTrue(summary_path.exists())
+            self.assertTrue((out_dir / "unified_local_swap_report.md").exists())
+
+            runs = pd.read_csv(runs_path)
+            self.assertEqual(len(runs), 10)
+            self.assertEqual(set(runs["max_swaps"]), {0, 1})
+            self.assertEqual(runs["method"].nunique(), 10)
+            self.assertTrue((runs["active_count"] == runs["K"]).all())
 
     def test_cyclic_best_3swap_analysis_smoke_and_plot_only(self):
         with tempfile.TemporaryDirectory() as tmp:
