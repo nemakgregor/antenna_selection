@@ -15,6 +15,7 @@ from .h3_threshold import solve_h3
 from .local_search import refine_general_1swap
 from .miso_energy import solve_miso_energy_greedy
 from .pareto import solve_pareto_interference_greedy
+from .r2_delta import r2_window, solve_r2_delta_gen
 from .thresholded_logdet import solve_thresholded_logdet_greedy
 from .threshold_windows import (
     best_cyclic_threshold_window,
@@ -47,6 +48,8 @@ __all__ = [
     "refine_selection_by_ug_swaps_steps",
     "solve_miso_energy_greedy",
     "solve_pareto_interference_greedy",
+    "r2_window",
+    "solve_r2_delta_gen",
     "solve_thresholded_logdet_greedy",
     "best_cyclic_threshold_window",
     "cyclic_threshold_window_selection",

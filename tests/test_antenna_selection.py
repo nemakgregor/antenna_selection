@@ -27,9 +27,11 @@ from algorithms import (
     solve_h3_strong_weak,
     solve_miso_energy_greedy,
     solve_pareto_interference_greedy,
+    r2_window,
     refine_general_1swap,
     refine_selection_by_ug_swaps,
     refine_selection_by_ug_swaps_steps,
+    solve_r2_delta_gen,
     threshold_window_selection,
     solve_thresholded_logdet_greedy,
     solve_true_backward_greedy,
@@ -37,6 +39,7 @@ from algorithms import (
 from algorithms.h3_threshold_local import refine_threshold_by_swaps
 from utils.brute_force import brute_force_exact_u_g, contiguous_threshold_window_T
 from utils.data import generate_V
+from utils.solver_sets import REQUESTED_GEN_SOLVERS
 
 class TestAntennaSelection(unittest.TestCase):
     def setUp(self):
@@ -202,6 +205,35 @@ class TestAntennaSelection(unittest.TestCase):
         self.assertTrue(is_valid)
         self.assertEqual(num_active, self.K)
 
+    def test_r2_window_scalar_example_drops_strongest(self):
+        V = np.sqrt(np.array([1.0, 0.25, 0.25, 0.25, 0.25, 0.25]))[:, None]
+        x = r2_window(V.astype(complex), 5, sigma=1.0, P=1.0)
+
+        is_valid, num_active = check_constraints(x, 5)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, 5)
+        self.assertEqual(int(x[0]), 0)
+
+    def test_r2_delta_gen_logic(self):
+        seed = r2_window(self.V_L4, self.K, sigma=1.0, P=1.0)
+        result = solve_r2_delta_gen(
+            self.V_L4,
+            self.K,
+            sigma=1.0,
+            P=1.0,
+            max_rounds=5,
+            return_info=True,
+        )
+        x = result["x"]
+        is_valid, num_active = check_constraints(x, self.K)
+        self.assertTrue(is_valid)
+        self.assertEqual(num_active, self.K)
+        self.assertGreaterEqual(result["final_score"], result["initial_score"] - 1e-12)
+
+        seed_u_g = calculate_objectives(self.V_L4, seed, sigma=1.0, P=1.0)[2]
+        r2_delta_u_g = calculate_objectives(self.V_L4, x, sigma=1.0, P=1.0)[2]
+        self.assertGreaterEqual(r2_delta_u_g, seed_u_g - 1e-8)
+
     def test_cap_submodular_gen_logic(self):
         x = solve_cap_submodular_gen(
             self.V_L4,
@@ -225,6 +257,22 @@ class TestAntennaSelection(unittest.TestCase):
         is_valid, num_active = check_constraints(x, self.K)
         self.assertTrue(is_valid)
         self.assertEqual(num_active, self.K)
+
+    def test_requested_gen_solver_registry_small_smoke(self):
+        V = self.V_L2[:20]
+        K = 10
+        names = {name for name, _ in REQUESTED_GEN_SOLVERS}
+        self.assertIn("R2Delta-Gen", names)
+
+        for name, solver in REQUESTED_GEN_SOLVERS:
+            with self.subTest(name=name):
+                x = solver(V, K, sigma=1.0, P=1.0, random_state=42)
+                is_valid, num_active = check_constraints(x, K)
+                self.assertTrue(is_valid)
+                self.assertEqual(num_active, K)
+                self.assertTrue(
+                    np.isfinite(calculate_objectives(V, x, sigma=1.0, P=1.0)[2])
+                )
 
     def test_general_1swap_local_search_nonworse(self):
         x = solve_h3_strong_weak(self.V_L4, self.K, sigma=1.0, P=1.0)

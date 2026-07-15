@@ -23,6 +23,7 @@ GUROBI_COLORS = {
     "Frame-Int": "#b56576",
     "Frame-Gen": "#3366cc",
     "CapWindow-Gen": "#1f78b4",
+    "R2Delta-Gen": "#8a9a5b",
     "CapSubmod-Gen": "#007a87",
     "ThreshDOpt-Gen": "#0099c6",
     "ThreshWLogdet-Gen": "#6c8e00",

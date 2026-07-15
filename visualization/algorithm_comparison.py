@@ -16,6 +16,7 @@ ALGORITHM_COLORS = {
     "Frame-Gen": "#E377C2",
     "S-threshold-Gen": "#E69F00",
     "H3ThresholdT123-Gen": "#B07AA1",
+    "R2Delta-Gen": "#8A9A5B",
     "CapSubmod-Gen": "#17BECF",
     "CapSubmodPort-Gen": "#D62728",
     "TrueBackwardGreedy": "#4D4D4D",
@@ -28,6 +29,7 @@ ALGORITHM_COLORS = {
 
 ALGORITHM_LINESTYLES = {
     "H3ThresholdT123-Gen": "-.",
+    "R2Delta-Gen": "--",
     "CapSubmod-Gen": "-",
     "CapSubmodPort-Gen": "-.",
 }

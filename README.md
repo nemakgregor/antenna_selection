@@ -46,6 +46,8 @@ Current solver families include:
 - Frame methods: `Frame-*` and `FrameOnly-*` portfolios.
 - Cap-aware methods: `CapWindow-Gen`, `CapWindowFull-Gen`, `CapSubmod-Gen`,
   and `CapSubmodPort-Gen`.
+- Analytical cap-aware methods: `R2Delta-Gen`, the R2 power-window rule with
+  derivative-guided exact `U_G` pair swaps.
 - Local-search refinements: one-swap `U_G` repair variants used by the focused
   requested-gen and unified local-swap comparisons.
 - Reference heuristics: `CoutinoSchur-Gen`, `MISO-EE`, `Pareto-H2`, and

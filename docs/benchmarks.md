@@ -33,6 +33,9 @@ python -m experiments.algorithm_comparison \
   --checkpoint-every 25
 ```
 
+`requested-gen` includes `R2Delta-Gen`, `CapWindow*`, `CapSubmod*`, H3
+threshold variants, and their active one-swap refinements.
+
 ## Unified Local-Swap Grid
 
 ```bash

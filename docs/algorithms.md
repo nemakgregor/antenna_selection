@@ -35,6 +35,9 @@ where `M = V_eq V_eq*`.
   and `gen` targets.
 - `solve_cap_window_gen` and `solve_cap_window_full_gen`: cap-aware contiguous
   power-window scans for `U_G`.
+- `solve_r2_delta_gen`: analytical R2+Delta rule for `U_G`. It starts from a
+  two-moment power-window estimate and then accepts only exact improving pair
+  swaps guided by the log-det derivative.
 - `solve_cap_submodular_gen` and `solve_cap_submodular_portfolio_gen`: cap-aware
   submodular/log-det candidates for `U_G`.
 - `solve_thresholded_logdet_greedy`: thresholded log-det heuristic.
