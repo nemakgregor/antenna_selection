@@ -6,7 +6,7 @@ from .h2 import solve_h2
 
 
 def solve_miso_energy_greedy(
-    V, K, sigma=1.0, P=1.0, target_margin=0.05, min_active=None
+    V, K, sigma=1.0, P=1.0, target_margin=0.05, min_active=None, random_state=None
 ):
     """
     Energy-aware MISO antenna selection under the task constraint sum(x) <= K.
@@ -16,6 +16,7 @@ def solve_miso_energy_greedy(
     H1/H2 by target_margin on U_G.
     """
 
+    del random_state
     N, L = V.shape
     K = int(np.clip(K, 0, N))
     min_active = L if min_active is None else int(min_active)

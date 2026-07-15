@@ -15,6 +15,7 @@ def solve_pareto_interference_greedy(
     h12_bf_floor=0.85,
     h2_interference_ceiling=2.0,
     min_active=None,
+    random_state=None,
 ):
     """
     Interference-first greedy with BF protection.
@@ -23,6 +24,7 @@ def solve_pareto_interference_greedy(
     whose BF gain remains close to the best BF candidate at the current step.
     """
 
+    del random_state
     N, L = V.shape
     K, min_count = default_min_active(V, K, min_active)
     if K == 0:

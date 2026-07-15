@@ -8,8 +8,7 @@ import numpy as np
 SIGMA_COLORS = {
     "H1": "#1f77b4",
     "H2": "#ff7f0e",
-    "Coutino": "#2ca02c",
-    "BackwardTrueGreedy": "#2ca02c",
+    "TrueBackwardGreedy": "#2ca02c",
     "CoutinoSchur-Gen": "#7a3e9d",
     "MISO-EE": "#4f6d7a",
     "Pareto-H2": "#9467bd",
@@ -30,8 +29,7 @@ SIGMA_COLORS = {
 SIGMA_MARKERS = {
     "H1": "o",
     "H2": "s",
-    "Coutino": "^",
-    "BackwardTrueGreedy": "^",
+    "TrueBackwardGreedy": "^",
     "CoutinoSchur-Gen": "P",
     "MISO-EE": "D",
     "Pareto-H2": "P",

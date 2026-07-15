@@ -3,7 +3,7 @@ import numpy as np
 from .common import default_min_active
 
 
-def solve_h2(V, K, sigma=1.0, P=1.0, min_active=None):
+def solve_h2(V, K, sigma=1.0, P=1.0, min_active=None, random_state=None):
     """
     H2 from the task statement.
 
@@ -12,6 +12,7 @@ def solve_h2(V, K, sigma=1.0, P=1.0, min_active=None):
     Uses the exact formula for L=2, and a generalized matrix approach for L>2.
     """
 
+    del random_state
     N, L = V.shape
     K, _ = default_min_active(V, K, min_active)
     if K == 0:

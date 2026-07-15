@@ -9,6 +9,7 @@ def solve_h3(
     target_obj="gen",
     sigma=1.0,
     P=1.0,
+    random_state=None,
     t_tests=None,
     include_phase_nulling=True,
 ):
@@ -19,6 +20,7 @@ def solve_h3(
     objectives. The selected vector is still evaluated later on all metrics.
     """
 
+    del random_state
     if target_obj not in {"bf", "int", "gen"}:
         raise ValueError("target_obj must be one of {'bf', 'int', 'gen'}.")
 

@@ -19,7 +19,7 @@ benchmark entry points, plotting code, and reproducible notes are kept separate.
     report/plot refresh.
   - `experiments.gurobi_exact`: exact small-case Gurobi comparisons.
 - `visualization/`: plotting functions used by active experiments.
-- `docs/`: method notes and reproducible commands.
+- `docs/`: maintained method notes and reproducible commands.
 - `results/`: generated benchmark artifacts. This directory is ignored by Git
   and can be deleted without affecting source code or tests.
 
@@ -32,13 +32,13 @@ generated CSV/JSON/plots should go under `results/`.
 Run experiments through their package modules:
 
 ```bash
-venv/bin/python -m experiments.algorithm_comparison --help
-venv/bin/python -m experiments.sigma_variation --help
-venv/bin/python -m experiments.gurobi_exact --help
+python -m experiments.algorithm_comparison --help
+python -m experiments.sigma_variation --help
+python -m experiments.gurobi_exact --help
 ```
 
 After changing algorithms or benchmark scripts, run:
 
 ```bash
-venv/bin/python -m unittest motor_challenge_1205.py
+python -m unittest discover
 ```

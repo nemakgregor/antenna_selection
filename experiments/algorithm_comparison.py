@@ -14,9 +14,9 @@ except ImportError:
 
 from algorithms import (
     best_cyclic_threshold_window,
-    cap_submodular_seed_gen,
+    solve_cap_submodular_gen,
     solve_cap_window_full_gen,
-    frame_portfolio_seed_gen,
+    solve_frame_portfolio,
     refine_selection_by_ug_swaps_steps,
     solve_h3,
     solve_h3_strong_weak,
@@ -52,7 +52,7 @@ OUR_ALGORITHMS = (
     "H3ThresholdT123-Gen",
     "CapSubmod-Gen",
     "S-threshold-Gen",
-    "BackwardTrueGreedy",
+    "TrueBackwardGreedy",
 )
 FOCUSED_H3_CAP_WINDOW = (
     "H3",
@@ -1178,13 +1178,17 @@ def _build_ug_swap_seeds(V, K, args, generator_seed, sample):
     seeds.append(
         _timed_seed(
             "frame_portfolio",
-            lambda: frame_portfolio_seed_gen(
+            lambda: solve_frame_portfolio(
                 V,
                 K,
                 sigma=args.sigma,
                 P=args.P,
+                target_obj="gen",
                 random_state=frame_random_state,
                 max_refined_starts=3,
+                max_passes=0,
+                remove_limit=0,
+                add_limit=0,
                 lambdas=(),
             ),
             seed_T=np.nan,
@@ -1194,7 +1198,7 @@ def _build_ug_swap_seeds(V, K, args, generator_seed, sample):
     seeds.append(
         _timed_seed(
             "cap_submodular",
-            lambda: cap_submodular_seed_gen(
+            lambda: solve_cap_submodular_gen(
                 V,
                 K,
                 sigma=args.sigma,
@@ -3142,7 +3146,7 @@ def _unified_seed_specs_for_case(V, K, args, case_base):
         UNIFIED_LOCAL_SWAP_FAMILIES.index("CapSubmod-Gen"),
     )
     started_at = time.perf_counter()
-    cap_submod_x = cap_submodular_seed_gen(
+    cap_submod_x = solve_cap_submodular_gen(
         V,
         K,
         sigma=sigma,

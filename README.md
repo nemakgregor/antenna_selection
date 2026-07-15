@@ -13,7 +13,7 @@ large-scale comparison target is the general objective
   helpers, and atomic result writers.
 - `experiments/`: runnable benchmark entry points. Run them as Python modules.
 - `visualization/`: plotting code used by the experiment modules.
-- `docs/`: method notes and reproducible benchmark commands.
+- `docs/`: maintained method notes and reproducible benchmark commands.
 - `results/`: generated benchmark artifacts. This directory is intentionally
   ignored by Git and is not required for a clean source handoff.
 
@@ -23,7 +23,7 @@ Create a virtual environment and install the runtime dependencies:
 
 ```bash
 python -m venv venv
-venv/bin/python -m pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
 
 On Windows, use `venv\Scripts\python.exe` if your virtual environment uses the
@@ -39,7 +39,8 @@ registries live in `utils/solver_sets.py`.
 
 Current solver families include:
 
-- Baselines: `H1`, `H2`, strong/weak `H3`, `H3-Fast`, backward true greedy.
+- Baselines: `H1`, `H2`, strong/weak `H3`, `H3-Fast`,
+  `TrueBackwardGreedy`.
 - Threshold methods: `H3` objective variants and the `H3ThresholdT123-Gen`
   portfolio used in focused `U_G` comparisons.
 - Frame methods: `Frame-*` and `FrameOnly-*` portfolios.
@@ -55,15 +56,15 @@ Current solver families include:
 Show command-line options:
 
 ```bash
-venv/bin/python -m experiments.algorithm_comparison --help
-venv/bin/python -m experiments.sigma_variation --help
-venv/bin/python -m experiments.gurobi_exact --help
+python -m experiments.algorithm_comparison --help
+python -m experiments.sigma_variation --help
+python -m experiments.gurobi_exact --help
 ```
 
 Default CDF/runtime comparison:
 
 ```bash
-venv/bin/python -m experiments.algorithm_comparison \
+python -m experiments.algorithm_comparison \
   --N 1000 --L 2 \
   --samples 100 \
   --generator-seeds 10 42 \
@@ -74,7 +75,7 @@ venv/bin/python -m experiments.algorithm_comparison \
 Focused `U_G` comparison for the requested general-objective solvers:
 
 ```bash
-venv/bin/python -m experiments.algorithm_comparison \
+python -m experiments.algorithm_comparison \
   --solver-set requested-gen \
   --N 1000 --L 2 \
   --samples 100 \
@@ -86,7 +87,7 @@ venv/bin/python -m experiments.algorithm_comparison \
 Unified local-swap grid:
 
 ```bash
-venv/bin/python -m experiments.algorithm_comparison \
+python -m experiments.algorithm_comparison \
   --unified-local-swap-comparison \
   --N 1000 \
   --L-values 2 4 6 8 10 \
@@ -103,7 +104,7 @@ venv/bin/python -m experiments.algorithm_comparison \
 Sigma sweep:
 
 ```bash
-venv/bin/python -m experiments.sigma_variation \
+python -m experiments.sigma_variation \
   --N 1000 --L 4 \
   --off-pcts 25 50 \
   --samples 10 \
@@ -114,7 +115,7 @@ venv/bin/python -m experiments.sigma_variation \
 Exact small-case benchmark, when Gurobi is installed:
 
 ```bash
-venv/bin/python -m experiments.gurobi_exact --N 10 --L 2 --samples 5
+python -m experiments.gurobi_exact --N 10 --L 2 --samples 5
 ```
 
 ## Validation
@@ -122,7 +123,7 @@ venv/bin/python -m experiments.gurobi_exact --N 10 --L 2 --samples 5
 Run the regression suite after changing algorithms or benchmark scripts:
 
 ```bash
-venv/bin/python -m unittest motor_challenge_1205.py
+python -m unittest discover
 ```
 
 The tests cover objective calculation, solver constraints, benchmark registries,

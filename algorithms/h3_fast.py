@@ -4,6 +4,8 @@ import numpy as np
 def solve_h3_fast(
     V,
     K,
+    sigma=1.0,
+    P=1.0,
     *,
     mode="auto",
     use_refinement=True,
@@ -20,6 +22,7 @@ def solve_h3_fast(
     dependent rounding, optionally followed by local swap refinement.
     """
 
+    del sigma, P
     rng = np.random.default_rng(random_state)
     V = np.asarray(V)
 

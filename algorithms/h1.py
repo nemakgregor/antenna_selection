@@ -3,7 +3,7 @@ import numpy as np
 from .common import default_min_active
 
 
-def solve_h1(V, K, sigma=1.0, P=1.0, min_active=None):
+def solve_h1(V, K, sigma=1.0, P=1.0, min_active=None, random_state=None):
     """
     H1 from the task statement.
 
@@ -11,6 +11,7 @@ def solve_h1(V, K, sigma=1.0, P=1.0, min_active=None):
     K antennas remain active.
     """
 
+    del random_state
     N, _ = V.shape
     K, _ = default_min_active(V, K, min_active)
     if K == 0:

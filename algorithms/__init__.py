@@ -4,17 +4,9 @@ from .cap_submodular import (
     solve_cap_submodular_gen,
     solve_cap_submodular_portfolio_gen,
 )
-from .cap_submodular_uglocal import (
-    cap_submodular_seed_gen,
-    solve_cap_submodular_uglocal_gen,
-)
-from .coutino import solve_backward_true_greedy, solve_coutino_greedy
+from .coutino import solve_true_backward_greedy
 from .coutino_schur import solve_coutino_schur_greedy
 from .frame_portfolio import solve_frame_portfolio
-from .frame_portfolio_uglocal import (
-    frame_portfolio_seed_gen,
-    solve_frame_portfolio_uglocal_gen,
-)
 from .h1 import solve_h1
 from .h2 import solve_h2
 from .h3_fast import solve_h3_fast
@@ -38,18 +30,13 @@ from .ug_swap_local import (
 __all__ = [
     "calculate_objectives",
     "check_constraints",
-    "solve_backward_true_greedy",
-    "solve_coutino_greedy",
+    "solve_true_backward_greedy",
     "solve_coutino_schur_greedy",
     "solve_cap_submodular_gen",
     "solve_cap_submodular_portfolio_gen",
-    "cap_submodular_seed_gen",
-    "solve_cap_submodular_uglocal_gen",
     "solve_cap_window_gen",
     "solve_cap_window_full_gen",
     "solve_frame_portfolio",
-    "frame_portfolio_seed_gen",
-    "solve_frame_portfolio_uglocal_gen",
     "solve_h1",
     "solve_h2",
     "solve_h3",
