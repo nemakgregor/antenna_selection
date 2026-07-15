@@ -8,12 +8,3 @@ __pycache__/
 
 venv/
 .venv/
-
-# Local benchmark artifacts generated during experiments.
-results/
-
-# Old local paper/artifact cache. Keep source references in docs instead.
-publiucations/
-max-cut/
-
-*.zip
