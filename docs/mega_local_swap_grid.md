@@ -35,6 +35,4 @@ venv/bin/python -m experiments.algorithm_comparison \
   --out-dir results/mega_unified_local_swap_N1000_L2_4_6_8_10_profiles6_sigma1_10_100_1000_10000_s100
 ```
 
-Current checkout note: `venv/bin/python` is absent in this workspace, so the
-2026-07-07 launch used the available `python` 3.11 interpreter after import
-checks and regression tests passed.
+All generated CSV, JSON, report, and plot files should stay under `results/`.

@@ -1,9 +1,10 @@
 .DS_Store
 .cache/
 .matplotlib-cache/
-.codex/
 __pycache__/
 *.py[cod]
+*.log
+*.tmp
 
 venv/
 .venv/

@@ -1940,9 +1940,9 @@ def _write_ug_swap_seed_report(
         [
             "## Notes",
             "",
-            "- `cyclic_best` is the only seed logic copied from `MOTOR-new-experiments`.",
-            "- `strong_weak` uses the current branch implementation in `algorithms/h3_strong_weak.py`.",
-            "- `frame_portfolio` and `cap_submodular` are experimental wrappers that keep the seed solver separate from the new U_G swap refinement.",
+            "- `cyclic_best` uses the cyclic threshold-window seed from `algorithms/threshold_windows.py`.",
+            "- `strong_weak` uses the implementation in `algorithms/h3_strong_weak.py`.",
+            "- `frame_portfolio` and `cap_submodular` keep seed construction separate from the U_G swap refinement.",
         ]
     )
     out_path.write_text("\n".join(lines), encoding="utf-8")
@@ -2698,7 +2698,7 @@ def _write_cyclic_best_3swap_report(runs, summary, improvement, combined_summary
         "# Cyclic Best-T 3-Swap Analysis",
         "",
         "This focused follow-up reruns only `cyclic_best` with `0/1/2/3` greedy raw-`U_G` swaps.",
-        "All non-cyclic comparison methods are loaded from the previous U_G swap experiment.",
+        "Non-cyclic comparison methods are loaded from the configured baseline U_G swap result directory.",
         "",
         "## K Semantics",
         "",
