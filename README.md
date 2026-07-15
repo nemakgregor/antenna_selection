@@ -32,26 +32,30 @@ standard Windows layout.
 `gurobipy` is optional and is needed only for exact Gurobi benchmarks in
 `experiments.gurobi_exact`.
 
-## Active Algorithms
+## Tested Algorithms
 
-The active implementation surface is `algorithms/__init__.py`. The benchmark
-registries live in `utils/solver_sets.py`.
+The final comparison set for the customer handoff is the tested
+general-objective family around `U_G`. Public solvers are exported from
+`algorithms/__init__.py`; benchmark groups are defined in `utils/solver_sets.py`.
 
-Current solver families include:
+| Benchmark name | Implementation | How it is used |
+|---|---|---|
+| `H3` | `algorithms/h3_strong_weak.py::solve_h3_strong_weak` | Strong/weak power split baseline. |
+| `H3Threshold-T0.05N-Gen` | `algorithms/h3_threshold.py::solve_h3` with `t_tests=(round(0.05 * N),)` | Fixed H3 threshold with `T = 0.05N`; wired in `experiments/algorithm_comparison.py` for unified local-search runs. |
+| `CapWindow-Gen`, `CapWindowFull-Gen` | `algorithms/cap_window.py` | Cap-aware power-window scans for `U_G`. |
+| `CapSubmod-Gen` | `algorithms/cap_submodular.py::solve_cap_submodular_gen` | Cap-aware submodular/log-det candidate for `U_G`. |
+| `*-1SwapLS-Gen` and unified `+1swap` runs | `algorithms/local_search.py::refine_general_1swap`, `algorithms/ug_swap_local.py` | Local search applied to the tested seeds. |
 
-- Baselines: `H1`, `H2`, strong/weak `H3`, `H3-Fast`,
-  `TrueBackwardGreedy`.
-- Threshold methods: `H3` objective variants and the `H3ThresholdT123-Gen`
-  portfolio used in focused `U_G` comparisons.
-- Frame methods: `Frame-*` and `FrameOnly-*` portfolios.
-- Cap-aware methods: `CapWindow-Gen`, `CapWindowFull-Gen`, `CapSubmod-Gen`,
-  and `CapSubmodPort-Gen`.
-- Analytical cap-aware methods: `R2Delta-Gen`, the R2 power-window rule with
-  derivative-guided exact `U_G` pair swaps.
-- Local-search refinements: one-swap `U_G` repair variants used by the focused
-  requested-gen and unified local-swap comparisons.
-- Reference heuristics: `CoutinoSchur-Gen`, `MISO-EE`, `Pareto-H2`, and
-  thresholded log-det variants.
+`H3ThresholdT123-Gen` in `utils/solver_sets.py` is a broader threshold
+portfolio (`0.05N`, `0.15K`, and `0.125NL/(L+2)`). Use the unified local-search
+command below when the benchmark must be exactly `T = 0.05N`.
+
+Other implemented heuristics are kept for future research and reference only.
+They did not pass the final quality criteria for the customer delivery set, or
+were not revalidated under the final benchmark gate. This includes `H1`, `H2`,
+`TrueBackwardGreedy`, `CoutinoSchur-Gen`, `MISO-EE`, `Pareto-H2`, `Frame-*`,
+`FrameOnly-*`, `H3-Fast`, thresholded log-det variants, `CapSubmodPort-Gen`,
+and `R2Delta-Gen`.
 
 ## Main Commands
 
@@ -86,6 +90,33 @@ python -m experiments.algorithm_comparison \
   --checkpoint-every 25
 ```
 
+Run only the main tested registered solvers:
+
+```bash
+python -m experiments.algorithm_comparison \
+  --solver-set requested-gen \
+  --algorithms H3 CapWindow-Gen CapWindowFull-Gen CapSubmod-Gen \
+  --N 1000 --L 2 \
+  --samples 100 \
+  --generator-seeds 10 42 \
+  --off-pcts 25 50 \
+  --checkpoint-every 25
+```
+
+Run the tested local-search variants:
+
+```bash
+python -m experiments.algorithm_comparison \
+  --solver-set requested-gen \
+  --algorithms H3-1SwapLS-Gen CapWindow-1SwapLS-Gen \
+    CapWindowFull-1SwapLS-Gen CapSubmod-1SwapLS-Gen \
+  --N 1000 --L 2 \
+  --samples 100 \
+  --generator-seeds 10 42 \
+  --off-pcts 25 50 \
+  --checkpoint-every 25
+```
+
 Unified local-swap grid:
 
 ```bash
@@ -102,6 +133,10 @@ python -m experiments.algorithm_comparison \
   --checkpoint-every 1000 \
   --resume
 ```
+
+This unified mode is the benchmark path for `H3Threshold-T0.05N-Gen`,
+`CapWindowFull-Gen`, `CapSubmod-Gen`, `strong_weak`, and their local-search
+`+0swap`/`+1swap` variants.
 
 Sigma sweep:
 
